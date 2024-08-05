@@ -1,17 +1,25 @@
 const std = @import("std");
 
-pub export fn isInsideContainer() bool {
-    if (std.fs.accessAbsolute("/run/.containerenv", .{})) {
+pub fn isInsideContainer() bool {
+    return fileExists("/run/.containerenv");
+}
+
+pub fn isInsideNexpodContainer() bool {
+    return fileExists("/run/.nexpodenv");
+}
+
+fn fileExists(path: []const u8) bool {
+    if (std.fs.accessAbsolute(path, .{})) {
         return true;
-    } else {
+    } else |_| {
         return false;
     }
 }
 
-pub export fn isInsideNexpodContainer() bool {
-    if (std.fs.accessAbsolute("/run/.nexpodenv", .{})) {
-        return true;
-    } else {
-        return false;
-    }
+test "fileExists" {
+    const path = "/tmp/nexpodtest";
+    (try std.fs.createFileAbsolute(path, .{})).close();
+    defer std.fs.deleteFileAbsolute(path) catch unreachable;
+
+    try std.testing.expect(fileExists(path));
 }
