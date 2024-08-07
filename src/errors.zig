@@ -9,3 +9,5 @@ pub const PodmanErrors = error{
     Failed,
     UnexpectedExit,
 };
+
+pub const ImageParseError = std.json.ParseFromValueError || std.json.Scanner.NextError || std.json.Scanner.NextError || std.json.Scanner.AllocError || error{OutOfMemory};
