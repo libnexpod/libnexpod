@@ -29,6 +29,8 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
+    // this is needed to get the environment variables to spawn processes
+    lib.linkLibC();
     lib_target.dependOn(&b.addInstallArtifact(lib, .{}).step);
     b.getInstallStep().dependOn(lib_target);
 
