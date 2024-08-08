@@ -15,7 +15,7 @@ pub fn build(b: *std.Build) void {
     shim_target.dependOn(&b.addInstallArtifact(shim, .{
         .dest_dir = .{
             .override = .{
-                .custom = "libexec/zig/",
+                .custom = "libexec/nexpod/",
             },
         },
     }).step);
