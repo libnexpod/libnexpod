@@ -1,5 +1,8 @@
 #!/usr/bin/bash
-output=$(zig fmt --check --ast-check src/*.zig build.zig build.zig.zon)
+OIFS="$IFS"
+IFS=$'\n'
+files=$(find src -name '*.zig')
+output=$(zig fmt --check --ast-check $files build.zig build.zig.zon)
 exit_code=$?
 if [ $exit_code -ne 0 ]
 then

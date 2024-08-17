@@ -1,14 +1,34 @@
 const std = @import("std");
 
-pub fn build(b: *std.Build) void {
+pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{ .preferred_optimize_mode = .ReleaseSafe });
+
+    const clap = b.dependency("clap", .{
+        .target = target,
+        .optimize = optimize,
+    });
+    const zeit = b.dependency("zeit", .{
+        .target = target,
+        .optimize = optimize,
+    });
+
+    const log_module = b.addModule("logging", .{
+        .root_source_file = b.path("src/utils/logging.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const utils_module = b.addModule("utils", .{
+        .root_source_file = b.path("src/utils/utils.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
 
     // create shim only target for building
     const shim_target = b.step("nexpod-host-shim", "Only the host shim");
     const shim = b.addExecutable(.{
         .name = "nexpod-host-shim",
-        .root_source_file = b.path("src/shim.zig"),
+        .root_source_file = b.path("src/shim/shim.zig"),
         .target = target,
         .optimize = optimize,
     });
@@ -22,36 +42,110 @@ pub fn build(b: *std.Build) void {
     b.getInstallStep().dependOn(shim_target);
 
     // create lib only target for building
-    const lib_target = b.step("nexpod-library", "Only the library");
-    const lib = b.addStaticLibrary(.{
-        .name = "nexpod",
-        .root_source_file = b.path("src/lib.zig"),
+    const lib = b.addModule("libnexpod", .{
+        .root_source_file = b.path("src/lib/lib.zig"),
         .target = target,
         .optimize = optimize,
     });
-    // this is needed to get the environment variables to spawn processes
-    lib.linkLibC();
-    lib_target.dependOn(&b.addInstallArtifact(lib, .{}).step);
-    b.getInstallStep().dependOn(lib_target);
+    const lib_modules = [_]Module{
+        .{
+            .name = "logging",
+            .module = log_module,
+        },
+        .{
+            .name = "utils",
+            .module = utils_module,
+        },
+        .{
+            .name = "zeit",
+            .module = zeit.module("zeit"),
+        },
+    };
+    addModules(lib, &lib_modules);
+
+    // create daemon only target for building
+    const daemon_target = b.step("nexpodd", "Only the daemon");
+    const daemon = b.addExecutable(.{
+        .name = "nexpodd",
+        .root_source_file = b.path("src/daemon/daemon.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const daemon_modules = [_]Module{
+        .{
+            .name = "clap",
+            .module = clap.module("clap"),
+        },
+        .{
+            .name = "logging",
+            .module = log_module,
+        },
+        .{
+            .name = "utils",
+            .module = utils_module,
+        },
+    };
+    addModules(&daemon.root_module, &daemon_modules);
+    daemon_target.dependOn(&b.addInstallArtifact(daemon, .{
+        .dest_dir = .{
+            .override = .{
+                .custom = "libexec/nexpod/",
+            },
+        },
+    }).step);
+    b.getInstallStep().dependOn(daemon_target);
 
     // tests
-    const test_step = b.step("test", "Run unit tests");
+    const test_step = b.step("unittests", "Run unit tests");
+
+    // for the utils
+    try addTestCases(b, test_step, "src/utils", &[_]Module{}, &target, &optimize, true);
 
     // for lib
-    const lib_unit_tests = b.addTest(.{
-        .root_source_file = b.path("src/lib.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-    const run_lib_unit_tests = b.addRunArtifact(lib_unit_tests);
-    test_step.dependOn(&run_lib_unit_tests.step);
+    const lib_unit_tests = b.step("libunittests", "Run only the unit tests for the library");
+    try addTestCases(b, lib_unit_tests, "src/lib", &lib_modules, &target, &optimize, true);
+    test_step.dependOn(lib_unit_tests);
 
     // for shim
-    const shim_unit_tests = b.addTest(.{
-        .root_source_file = b.path("src/shim.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-    const run_shim_unit_tests = b.addRunArtifact(shim_unit_tests);
-    test_step.dependOn(&run_shim_unit_tests.step);
+    const shim_unit_tests = b.step("shimunittests", "Run only the unit tests of the shim");
+    try addTestCases(b, shim_unit_tests, "src/shim", &[_]Module{}, &target, &optimize, false);
+    test_step.dependOn(shim_unit_tests);
+
+    // for daemon
+    const daemon_unit_tests = b.step("daemonunittests", "Run only the unit tests of the daemon");
+    try addTestCases(b, daemon_unit_tests, "src/daemon", &daemon_modules, &target, &optimize, false);
+    test_step.dependOn(daemon_unit_tests);
+}
+
+fn addTestCases(b: *std.Build, root_case: *std.Build.Step, dir_path: []const u8, modules: []const Module, target: *const std.Build.ResolvedTarget, optimize: *const std.builtin.OptimizeMode, libc: bool) !void {
+    var dir = try b.build_root.handle.openDir(dir_path, .{ .iterate = true });
+    defer dir.close();
+    var iter = dir.iterate();
+    while (try iter.next()) |entry| {
+        if (!std.mem.eql(u8, ".zig", std.fs.path.extension(entry.name))) {
+            continue;
+        }
+        const path = try std.mem.concat(b.allocator, u8, &[_][]const u8{ dir_path, "/", entry.name });
+        const test_case = b.addTest(.{
+            .root_source_file = b.path(path),
+            .target = target.*,
+            .optimize = optimize.*,
+        });
+        if (libc) {
+            test_case.linkLibC();
+        }
+        addModules(&test_case.root_module, modules);
+        const run_test_case = b.addRunArtifact(test_case);
+        root_case.dependOn(&run_test_case.step);
+    }
+}
+
+const Module = struct {
+    name: []const u8,
+    module: *std.Build.Module,
+};
+fn addModules(node: *std.Build.Module, modules: []const Module) void {
+    for (modules) |mod| {
+        node.addImport(mod.name, mod.module);
+    }
 }

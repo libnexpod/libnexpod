@@ -1,6 +1,16 @@
 .{
     .name = "libnexpod",
     .version = "0.0.0",
+    .dependencies = .{
+        .clap = .{
+            .url = "https://github.com/Hejsil/zig-clap/archive/refs/tags/0.9.1.tar.gz",
+            .hash = "122062d301a203d003547b414237229b09a7980095061697349f8bef41be9c30266b",
+        },
+        .zeit = .{
+            .url = "https://github.com/rockorager/zeit/archive/refs/tags/v0.3.0.tar.gz",
+            .hash = "1220fb41de06f30dbb8ad57118fa72ddb9685c42b0353fe194e6eff555596b5e30d6",
+        },
+    },
     .paths = .{
         "build.zig",
         "build.zig.zon",

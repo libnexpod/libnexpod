@@ -1,7 +1,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
 
-const nexpod_log = std.log.scoped(.nexpod);
+const nexpod_log = std.log.scoped(.libnexpod);
 
 pub fn err(comptime format: []const u8, args: anytype) void {
     if (!builtin.is_test) {

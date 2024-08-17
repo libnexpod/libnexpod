@@ -1,0 +1,81 @@
+#!/bin/sh
+
+cd /setup
+
+set -e
+
+is_package_installed()
+{
+    set +e
+    pacman -Qi $1 >/dev/null 2>&1
+    ret=$?
+    set -e
+    echo $ret
+}
+
+# update
+pacman -Syu --noconfirm
+
+# install extra packages
+PACKAGES="bash-completion flatpak-xdg-utils man-db man-pages sudo"
+pacman -Syu --needed --noconfirm ${PACKAGES}
+
+
+# download, compile and install nexpod-host-shim
+
+# check if possibly temporary packages are already installed
+tmp_git=$(is_package_installed git)
+if [[ $tmp_git != 0 ]]
+then
+    pacman --noconfirm -S git
+fi
+tmp_zig=$(is_package_installed zig)
+if [[ $tmp_zig != 0 ]]
+then
+    pacman --noconfirm -S zig
+fi
+tmp_devel=$(is_package_installed base-devel)
+if [[ $tmp_devel != 0 ]]
+then
+    pacman --noconfirm -S base-devel
+fi
+
+# clone
+dirname="nexpod-host-shim"
+git clone https://github.com/KilianHanich/arch-nexpod-host-shim-pkg "$dirname"
+pushd "$dirname"
+git checkout 32c318ac496edb650f2ac12e26c4485552953d1f
+
+# temporary user because makepkg doesn't want to be run as root
+useradd --create-home builduser
+chown builduser:builduser -R .
+sudo -u builduser makepkg --noconfirm
+
+# install
+pacman --noconfirm -U ./nexpod-host-shim-0.0.0-1-x86_64.pkg.tar.zst
+
+# clean up
+userdel --remove builduser
+popd
+rm -rf "$dirname"
+
+# remove temporary packages if they weren't already installed
+if [[ $tmp_devel != 0 ]]
+then
+    pacman --noconfirm -Rs base-devel
+fi
+if [[ $tmp_zig != 0 ]]
+then
+    pacman --noconfirm -Rs zig
+fi
+if [[ $tmp_git != 0 ]]
+then
+    pacman --noconfirm -Rs git
+fi
+
+
+# clean up cache
+pacman -Scc --noconfirm
+
+# make sudo inside of the container not require a password
+echo "%wheel ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/nexpod

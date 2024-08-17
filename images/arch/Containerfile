@@ -1,0 +1,10 @@
+FROM docker.io/library/archlinux:base
+
+COPY nexpod-setup /setup/
+RUN bash /setup/nexpod-setup
+# don't delete the script so users have an easier time at looking at what's done by it
+
+LABEL com.github.kilianhanich.nexpod="true" \
+    usage="This is meant to be used by the libnexpod library and tools based on it." \
+    summary="Base Image for Creating Arch Linux Nexpod Containers" \
+    maintainer="Kilian Hanich <khanich.opensource@gmx.de>"
