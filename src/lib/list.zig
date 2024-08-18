@@ -80,29 +80,7 @@ pub fn listImages(allocator: std.mem.Allocator) errors.ListErrors!std.ArrayList(
     return image_list;
 }
 
-const ImageMarshall = struct {
-    Names: []const []const u8,
-    Id: []const u8,
-    CreatedAt: []const u8,
-};
-
-test listImages {
-    var image_list = listImages(std.testing.allocator) catch |err| switch (err) {
-        error.InsideNonNexpodContainer => {
-            std.debug.print("inside non-nexpod container, ignoring test\n", .{});
-            return;
-        },
-        else => |rest| return rest,
-    };
-    defer {
-        for (image_list.items) |*e| {
-            e.deinit();
-        }
-        image_list.deinit();
-    }
-}
-
-pub fn listContainers(allocator: std.mem.Allocator, key: []const u8) !std.ArrayList(containers.Container) {
+pub fn listContainers(allocator: std.mem.Allocator, key: []const u8) errors.ListErrors!std.ArrayList(containers.Container) {
     if (utils.isInsideContainer() and !utils.isInsideNexpodContainer()) {
         return errors.NexpodErrors.InsideNonNexpodContainer;
     }
@@ -123,7 +101,7 @@ pub fn listContainers(allocator: std.mem.Allocator, key: []const u8) !std.ArrayL
     for (parsed.value) |element| {
         if (element.Names.len < 1) {
             log.err("Listed container with ID {s} doesn't have a name", .{element.Id});
-            return errors.PodmanErrors.InvalidOutput;
+            return errors.PodmanErrors.PodmanInvalidOutput;
         }
 
         const name = try allocator.dupe(u8, element.Names[0]);
@@ -161,6 +139,28 @@ pub fn listContainers(allocator: std.mem.Allocator, key: []const u8) !std.ArrayL
         });
     }
     return container_list;
+}
+
+const ImageMarshall = struct {
+    Names: []const []const u8,
+    Id: []const u8,
+    CreatedAt: []const u8,
+};
+
+test listImages {
+    var image_list = listImages(std.testing.allocator) catch |err| switch (err) {
+        error.InsideNonNexpodContainer => {
+            std.debug.print("inside non-nexpod container, ignoring test\n", .{});
+            return;
+        },
+        else => |rest| return rest,
+    };
+    defer {
+        for (image_list.items) |*e| {
+            e.deinit();
+        }
+        image_list.deinit();
+    }
 }
 
 const ContainerMarshall = struct {

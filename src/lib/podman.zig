@@ -4,7 +4,7 @@ const errors = @import("errors.zig");
 
 const label = "com.github.kilianhanich.nexpod";
 
-pub fn getContainerJSON(allocator: std.mem.Allocator, id: []const u8) ![]const u8 {
+pub fn getContainerJSON(allocator: std.mem.Allocator, id: []const u8) (std.process.Child.RunError || errors.PodmanErrors)![]const u8 {
     const inspect_argv = [_][]const u8{
         "podman",
         "container",
@@ -71,7 +71,7 @@ fn call(allocator: std.mem.Allocator, argv: []const []const u8) (std.process.Chi
     }) catch |err| switch (err) {
         error.FileNotFound => {
             log.err("podman not found\n", .{});
-            return errors.PodmanErrors.NotFound;
+            return errors.PodmanErrors.PodmanNotFound;
         },
         else => |rest| return rest,
     };
@@ -83,12 +83,12 @@ fn call(allocator: std.mem.Allocator, argv: []const []const u8) (std.process.Chi
                 return result.stdout;
             } else {
                 log.err("Call to podman exited with: {}\n{s}\n", .{ code, result.stderr });
-                return errors.PodmanErrors.Failed;
+                return errors.PodmanErrors.PodmanFailed;
             }
         },
         else => |code| {
             log.err("Podman exited unexpectedly with {any}\n{s}\n{s}\n", .{ code, result.stdout, result.stderr });
-            return errors.PodmanErrors.UnexpectedExit;
+            return errors.PodmanErrors.PodmanUnexpectedExit;
         },
     }
 }

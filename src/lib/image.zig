@@ -32,7 +32,7 @@ pub const Image = union(enum) {
         },
     },
 
-    pub fn makeFull(self: *Image) !void {
+    pub fn makeFull(self: *Image) errors.MakeFullErrors!void {
         switch (self.*) {
             .full => {},
             .minimal => |this| {

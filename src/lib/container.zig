@@ -2,6 +2,7 @@ const std = @import("std");
 const log = @import("logging");
 const zeit = @import("zeit");
 const podman = @import("podman.zig");
+const errors = @import("errors.zig");
 
 pub const State = enum {
     Exited,
@@ -97,7 +98,7 @@ pub const Container = union(enum) {
         }
     }
 
-    pub fn makeFull(self: *Container) !void {
+    pub fn makeFull(self: *Container) errors.MakeFullErrors!void {
         switch (self.*) {
             .full => {},
             .minimal => |this| {
