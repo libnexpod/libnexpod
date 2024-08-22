@@ -10,13 +10,6 @@ const Info = structs.Info;
 const Group = structs.Group;
 const nvidia = @import("nvidia.zig").nvidia;
 
-const permanents = [_][]const u8{
-    "home",
-    "mnt",
-    "opt",
-    "srv",
-};
-
 pub const MainExitCodes = enum(u8) {
     Success = 0,
     NotInContainer = 1,
@@ -147,7 +140,7 @@ fn loop(allocator: std.mem.Allocator) LoopErrors!void {
     }
 }
 
-const SetupErrors = std.fmt.AllocPrintError || std.process.Child.RunError || std.process.GetEnvMapError || std.fs.File.OpenError || std.fs.File.ReadError || std.fs.File.WriteError || std.posix.MakeDirError || std.fs.Dir.ChownError || LinkError || error{
+const SetupErrors = std.fmt.AllocPrintError || std.process.Child.RunError || std.process.GetEnvMapError || std.fs.File.OpenError || std.fs.File.ReadError || std.fs.File.WriteError || std.posix.MakeDirError || std.fs.Dir.ChownError || error{
     OutOfMemory,
     InvalidUsage,
     MissingParameter,
@@ -229,28 +222,6 @@ fn setup(allocator: std.mem.Allocator) SetupErrors!void {
             },
             .takes_value = .one,
         },
-        .{
-            .id = .{
-                .desc = "lots of links to permanent data like /home moved to /var like /var/home",
-                .val = "bool",
-            },
-            .names = .{
-                .short = null,
-                .long = "permanents-moved-to-var",
-            },
-            .takes_value = .none,
-        },
-        .{
-            .id = .{
-                .desc = "/media moved to /run/media",
-                .val = "bool",
-            },
-            .names = .{
-                .short = null,
-                .long = "media-link",
-            },
-            .takes_value = .none,
-        },
     };
 
     const parsers = comptime .{
@@ -288,8 +259,6 @@ fn setup(allocator: std.mem.Allocator) SetupErrors!void {
         .user = undefined,
         .shell = undefined,
         .home = undefined,
-        .@"permanents-moved-to-var" = undefined,
-        .@"media-link" = undefined,
     };
     defer info.group.deinit();
     inline for (std.meta.fields(Info)) |field| {
@@ -321,7 +290,6 @@ fn setup(allocator: std.mem.Allocator) SetupErrors!void {
         }
     }
 
-    try deal_with_links(allocator, info.@"permanents-moved-to-var", info.@"media-link");
     try ensure_user(allocator, info);
     try host_integration(allocator, info);
 
@@ -379,32 +347,10 @@ fn create_nexpod_files(allocator: std.mem.Allocator, uid: std.posix.uid_t, prima
     };
 }
 
-fn host_integration(allocator: std.mem.Allocator, info: Info) (LinkError || error{ OutOfMemory, XDGRuntimeDirNotSet } || std.fs.File.OpenError || std.fs.File.WriteError || std.process.GetEnvMapError || std.posix.MakeDirError || std.fs.Dir.ChownError)!void {
+fn host_integration(allocator: std.mem.Allocator, info: Info) (error{ OutOfMemory, XDGRuntimeDirNotSet } || std.fs.File.OpenError || std.fs.File.WriteError || std.process.GetEnvMapError || std.posix.MakeDirError || std.fs.Dir.ChownError)!void {
     var env: std.process.EnvMap, var runtime_dir: std.fs.Dir = try create_nexpod_files(allocator, info.uid, info.group.items[0].gid);
     defer env.deinit();
     defer runtime_dir.close();
-    const run_host = "/run/host";
-    if (utils.fileExists(run_host ++ "/etc")) {
-        log.info(run_host ++ "/etc exists, ensuring symlinks are set up\n", .{});
-        const redirect_somewhere_paths = [_][]const u8{
-            "/etc/host.conf",
-            "/etc/hosts",
-        };
-        inline for (redirect_somewhere_paths) |path| {
-            if (std.fs.openFileAbsolute(path, .{})) |file| {
-                defer file.close();
-                const metadata = try file.metadata();
-                if (metadata.kind() == .sym_link) {
-                    try redirect_path(run_host ++ path, path);
-                }
-            } else |err| {
-                switch (err) {
-                    error.FileNotFound => try redirect_path(run_host ++ path, path),
-                    else => |rest| return rest,
-                }
-            }
-        }
-    }
     try nvidia(allocator, runtime_dir);
     // this is basically copied from toolbx, link to commit: https://github.com/containers/toolbox/commit/7542f5fc867b57bf3dc67bbae02cc09ccc0b5df2
     const rpm_dir = "/usr/lib/rpm/macros.d";
@@ -423,60 +369,4 @@ fn host_integration(allocator: std.mem.Allocator, info: Info) (LinkError || erro
     const init_stamp = try runtime_dir.createFile("init-time-stamp", .{});
     defer init_stamp.close();
     try init_stamp.writer().print("{}", .{std.time.timestamp()});
-}
-
-fn deal_with_links(allocator: std.mem.Allocator, permanents_moved: bool, media: bool) LinkError!void {
-    if (media) {
-        std.fs.atomicSymLink(allocator, "/run/media", "/media") catch |err| switch (err) {
-            error.InvalidWtf8, error.InvalidUtf8, error.AntivirusInterference, error.PathAlreadyExists, error.NameTooLong, error.RenameAcrossMountPoints => unreachable,
-            error.FileNotFound => log.warn("supposed to create symlink from /media to /run/media but /run/media doesn't exist, ignoring\n", .{}),
-            else => |rest| {
-                log.err("can't create symlink from /media to /run/media because of {s}\n", .{@errorName(rest)});
-                return rest;
-            },
-        };
-    }
-    if (permanents_moved) {
-        inline for (permanents) |e| {
-            std.fs.atomicSymLink(allocator, "/var/" ++ e, "/" ++ e) catch |err| switch (err) {
-                error.InvalidWtf8, error.InvalidUtf8, error.AntivirusInterference, error.PathAlreadyExists, error.NameTooLong, error.RenameAcrossMountPoints => unreachable,
-                error.FileNotFound => log.warn("supposed to create symlink from /{s} to /var/{s} but /var/{s} doesn't exist, ignoring\n", .{ e, e, e }),
-                else => |rest| {
-                    log.err("can't create symlink from /{s} to /var/{s} because of {s}\n", .{ e, e, @errorName(rest) });
-                    return rest;
-                },
-            };
-        }
-    }
-}
-
-const LinkError = error{
-    OutOfMemory,
-    DiskQuota,
-    NoSpaceLeft,
-    AccessDenied,
-    SystemResources,
-    Unexpected,
-    FileSystem,
-    SymLinkLoop,
-    ReadOnlyFileSystem,
-    NotDir,
-    BadPathName,
-    FileBusy,
-    IsDir,
-    LinkQuotaExceeded,
-    NoDevice,
-    SharingViolation,
-    PipeBusy,
-    NetworkNotFound,
-};
-
-fn redirect_path(target: []const u8, symlink: []const u8) LinkError!void {
-    var buffer: [100]u8 = undefined;
-    var fba = std.heap.FixedBufferAllocator.init(&buffer);
-    std.fs.atomicSymLink(fba.allocator(), target, symlink) catch |err| switch (err) {
-        error.InvalidWtf8, error.InvalidUtf8, error.AntivirusInterference, error.PathAlreadyExists, error.NameTooLong, error.RenameAcrossMountPoints => unreachable,
-        error.FileNotFound => log.warn("can't create symlink from {s} to {s}, ignoring\n", .{ symlink, target }),
-        else => |rest| return rest,
-    };
 }

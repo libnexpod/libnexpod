@@ -87,6 +87,23 @@ pub const NexpodStorage = struct {
         while (container_iter.previous()) |_| {}
     }
 
+    pub fn createContainer(self: NexpodStorage, args: struct {
+        name: []const u8,
+        env: ?std.process.EnvMap = null,
+        additional_mounts: []const Mount,
+        home: ?[]const u8 = null,
+        image: Image,
+    }) errors.CreationErrors!container.Container {
+        return try create.createContainer(self.allocator, .{
+            .key = self.key,
+            .name = args.name,
+            .image = args.image,
+            .env = args.env,
+            .additional_mounts = args.additional_mounts,
+            .home_dir = args.home,
+        });
+    }
+
     pub fn deinit(self: NexpodStorage) void {
         self.allocator.free(self.key);
     }

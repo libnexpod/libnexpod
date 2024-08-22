@@ -525,8 +525,6 @@ test "ensure_user: groupadd unexpected exit" {
         .behaviour = .UnexpectedExit,
     };
     const info = Info{
-        .@"media-link" = false,
-        .@"permanents-moved-to-var" = false,
         .group = group_list,
         .home = "/fdg/hi",
         .shell = "/bin/sh",
@@ -561,8 +559,6 @@ test "ensure_user: groupadd error exit" {
         },
     });
     const info = Info{
-        .@"media-link" = false,
-        .@"permanents-moved-to-var" = false,
         .group = group_list,
         .home = "/fdg/hi",
         .shell = "/bin/sh",
@@ -601,8 +597,6 @@ test "ensure_user: groupadd start failed" {
         },
     });
     const info = Info{
-        .@"media-link" = false,
-        .@"permanents-moved-to-var" = false,
         .group = group_list,
         .home = "/fdg/hi",
         .shell = "/bin/sh",
@@ -641,8 +635,6 @@ test "ensure_user: useradd unexpected exit" {
         },
     });
     const info = Info{
-        .@"media-link" = false,
-        .@"permanents-moved-to-var" = false,
         .group = group_list,
         .home = "/fdg/hi",
         .shell = "/bin/sh",
@@ -688,8 +680,6 @@ test "ensure_user: useradd error exit" {
         },
     });
     const info = Info{
-        .@"media-link" = false,
-        .@"permanents-moved-to-var" = false,
         .group = group_list,
         .home = "/fdg/hi",
         .shell = "/bin/sh",
@@ -735,8 +725,6 @@ test "ensure_user: useradd started failed" {
         },
     });
     const info = Info{
-        .@"media-link" = false,
-        .@"permanents-moved-to-var" = false,
         .group = group_list,
         .home = "/fdg/hi",
         .shell = "/bin/sh",
@@ -782,8 +770,6 @@ test "ensure_user: useradd user already exists" {
         },
     });
     const info = Info{
-        .@"media-link" = false,
-        .@"permanents-moved-to-var" = false,
         .group = group_list,
         .home = "/fdg/hi",
         .shell = "/bin/sh",
@@ -830,8 +816,6 @@ test "ensure_user: useradd success" {
         },
     });
     const info = Info{
-        .@"media-link" = false,
-        .@"permanents-moved-to-var" = false,
         .group = group_list,
         .home = "/fdg/hi",
         .shell = "/bin/sh",
@@ -878,8 +862,6 @@ test "ensure_user: usermod" {
         },
     });
     const info = Info{
-        .@"media-link" = false,
-        .@"permanents-moved-to-var" = false,
         .group = group_list,
         .home = "/fdg/hi",
         .shell = "/bin/sh",

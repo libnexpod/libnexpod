@@ -32,6 +32,13 @@ pub const Image = union(enum) {
         },
     },
 
+    pub fn getId(self: Image) []const u8 {
+        switch (self) {
+            .minimal => |minimal| return minimal.id,
+            .full => |full| return full.id,
+        }
+    }
+
     pub fn makeFull(self: *Image) errors.MakeFullErrors!void {
         switch (self.*) {
             .full => {},

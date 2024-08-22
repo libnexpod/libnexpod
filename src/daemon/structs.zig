@@ -26,8 +26,6 @@ pub const Info = struct {
     user: []const u8,
     shell: []const u8,
     home: []const u8,
-    @"permanents-moved-to-var": bool,
-    @"media-link": bool,
 };
 
 test "Group.parse" {

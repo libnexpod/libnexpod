@@ -33,6 +33,7 @@ pub const Mount = struct {
         bind: struct {
             recursive: bool = false,
         },
+        devpts: struct {},
     },
     propagation: PropagationOptions,
     options: struct {
@@ -146,7 +147,7 @@ pub const Container = union(enum) {
                     const source = try arena_allocator.dupe(u8, e.source);
                     const kind = val: {
                         switch (e.kind) {
-                            .bind => break :val e.kind,
+                            .devpts, .bind => break :val e.kind,
                             .volume => {
                                 var clone = e.kind;
                                 clone.volume.name = try arena_allocator.dupe(u8, e.kind.volume.name);
@@ -332,7 +333,15 @@ pub const Container = union(enum) {
                 }
             };
             var mount = val: {
-                if (std.mem.eql(u8, "bind", e.Type)) {
+                if (std.mem.eql(u8, "devpts", e.Source)) {
+                    break :val Mount{
+                        .source = e.Source,
+                        .destination = e.Destination,
+                        .propagation = propagation,
+                        .kind = .{ .devpts = .{} },
+                        .options = .{ .rw = e.RW },
+                    };
+                } else if (std.mem.eql(u8, "bind", e.Type)) {
                     break :val Mount{
                         .source = e.Source,
                         .destination = e.Destination,
@@ -634,6 +643,7 @@ test "copy" {
                 try expect(.volume == actual.kind);
                 try expectEqualStrings(expected.kind.volume.name, actual.kind.volume.name);
             },
+            .devpts => {},
         }
     }
     for (full.full.idmappings.uids, full_clone.full.idmappings.uids) |expected, actual| {
