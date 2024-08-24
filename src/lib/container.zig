@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const log = @import("logging");
 const zeit = @import("zeit");
 const podman = @import("podman.zig");
@@ -99,22 +100,53 @@ pub const Container = union(enum) {
         }
     }
 
-    pub fn makeFull(self: *Container) errors.MakeFullErrors!void {
+    pub fn update(self: *Container) errors.UpdateErrors!void {
+        const id = self.getId();
+        const allocator = self.getAllocator();
+        const json = try podman.getContainerJSON(allocator, id);
+        defer allocator.free(json);
+        var parsed = try std.json.parseFromSlice(Container, allocator, json, .{});
+        defer parsed.deinit();
+        const new = try parsed.value.copy(allocator);
+        self.deinit();
+        self.* = new;
+    }
+
+    pub fn delete(self: *Container, force: bool) (std.process.Child.RunError || errors.PodmanErrors)!void {
+        const id = self.getId();
+        const allocator = self.getAllocator();
+        try podman.deleteContainer(allocator, id, force);
+    }
+
+    // the container will be in the full information state afterwards if podman itself doesn't error out or memory runs out
+    pub fn start(self: *Container) errors.UpdateErrors!void {
+        const id = self.getId();
+        const allocator = self.getAllocator();
+        // podman sadly doesn't tell us if the container succeeded in starting or immediately died
+        // so we instead need to ask for it manually
+        try podman.startContainer(allocator, id);
+        try self.update();
+    }
+
+    // the container will be in the full information state afterwards if podman itself doesn't error out or memory runs out
+    pub fn stop(self: *Container) errors.UpdateErrors!void {
+        const id = self.getId();
+        const allocator = self.getAllocator();
+        try podman.stopContainer(allocator, id);
+        try self.update();
+    }
+
+    pub fn getId(self: Container) []const u8 {
+        switch (self) {
+            .minimal => |this| return this.id,
+            .full => |this| return this.id,
+        }
+    }
+
+    pub fn makeFull(self: *Container) errors.UpdateErrors!void {
         switch (self.*) {
             .full => {},
-            .minimal => |this| {
-                const allocator = this.allocator;
-                const id = this.id;
-                const name = this.name;
-                const json = try podman.getContainerJSON(allocator, id);
-                defer allocator.free(json);
-                var parsed = try std.json.parseFromSlice(Container, allocator, json, .{});
-                defer parsed.deinit();
-                const new = try parsed.value.copy(allocator);
-                self.* = new;
-                allocator.free(id);
-                allocator.free(name);
-            },
+            .minimal => try self.update(),
         }
     }
 
@@ -471,6 +503,13 @@ pub const Container = union(enum) {
                 .umask = umask,
             },
         } };
+    }
+
+    fn getAllocator(self: Container) std.mem.Allocator {
+        switch (self) {
+            .minimal => |this| return this.allocator,
+            .full => |this| return this.arena.child_allocator,
+        }
     }
 };
 

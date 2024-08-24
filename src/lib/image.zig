@@ -32,14 +32,20 @@ pub const Image = union(enum) {
         },
     },
 
+    pub fn delete(self: *Image) (std.process.Child.RunError || errors.PodmanErrors)!void {
+        const id = self.getId();
+        const allocator = self.getAllocator();
+        try podman.deleteImage(allocator, id);
+    }
+
     pub fn getId(self: Image) []const u8 {
         switch (self) {
-            .minimal => |minimal| return minimal.id,
-            .full => |full| return full.id,
+            .minimal => |this| return this.id,
+            .full => |this| return this.id,
         }
     }
 
-    pub fn makeFull(self: *Image) errors.MakeFullErrors!void {
+    pub fn makeFull(self: *Image) errors.UpdateErrors!void {
         switch (self.*) {
             .full => {},
             .minimal => |this| {
@@ -315,6 +321,13 @@ pub const Image = union(enum) {
                 },
             },
         };
+    }
+
+    fn getAllocator(self: Image) std.mem.Allocator {
+        switch (self) {
+            .minimal => |this| return this.allocator,
+            .full => |this| return this.arena.child_allocator,
+        }
     }
 };
 

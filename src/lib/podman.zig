@@ -134,6 +134,57 @@ const create_base = [_][]const u8{
     "--name",
 };
 
+pub fn deleteImage(allocator: std.mem.Allocator, id: []const u8, force: bool) (std.process.Child.RunError || errors.PodmanErrors)!void {
+    const base_argv = [_][]const u8{
+        "podman",
+        "image",
+        "rm",
+        "--ignore",
+    };
+    const argv = base_argv ++ if (force) [_][]const u8{"--force"} else [_][]const u8{} ++ [_][]const u8{id};
+    const stdout = try call(allocator, argv);
+    allocator.free(stdout);
+}
+
+pub fn deleteContainer(allocator: std.mem.Allocator, id: []const u8, force: bool) (std.process.Child.RunError || errors.PodmanErrors)!void {
+    const base_argv = [_][]const u8{
+        "podman",
+        "container",
+        "rm",
+        "--ignore",
+    };
+    const argv = try std.mem.concat(allocator, []const u8, &[_][]const []const u8{
+        &base_argv,
+        if (force) &[_][]const u8{"--force"} else &[_][]const u8{},
+        [_][]const u8{id},
+    });
+    const stdout = try call(allocator, argv);
+    allocator.free(stdout);
+}
+
+pub fn startContainer(allocator: std.mem.Allocator, id: []const u8) (std.process.Child.RunError || errors.PodmanErrors)!void {
+    const argv = [_][]const u8{
+        "podman",
+        "container",
+        "start",
+        id,
+    };
+    const stdout = try call(allocator, argv);
+    allocator.free(stdout);
+}
+
+pub fn stopContainer(allocator: std.mem.Allocator, id: []const u8) (std.process.Child.RunError || errors.PodmanErrors)!void {
+    const argv = [_][]const u8{
+        "podman",
+        "container",
+        "stop",
+        "--ignore",
+        id,
+    };
+    const stdout = try call(allocator, argv);
+    allocator.free(stdout);
+}
+
 pub fn createContainer(args: struct {
     allocator: std.mem.Allocator,
     env: std.process.EnvMap,

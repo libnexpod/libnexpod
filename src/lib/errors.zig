@@ -20,6 +20,6 @@ pub const CreationErrors = std.mem.Allocator.Error || std.fmt.ParseIntError || s
 
 pub const ListErrors = NexpodErrors || PodmanErrors || std.json.ParseFromValueError || std.json.Scanner.AllocError || std.json.Scanner.NextError || std.process.Child.RunError;
 
-pub const MakeFullErrors = std.json.ParseError(std.json.Scanner) || std.process.Child.RunError || PodmanErrors || std.mem.Allocator.Error;
+pub const UpdateErrors = std.json.ParseError(std.json.Scanner) || std.process.Child.RunError || PodmanErrors || std.mem.Allocator.Error;
 
 pub const InitStorageErrors = PodmanErrors || error{ OutOfMemory, SystemResources, AccessDenied, InvalidExe, FileBusy, ProcessFdQuotaExceeded, SystemFdQuotaExceeded, ResourceLimitReached, InvalidUserId, FileSystem, SymLinkLoop, NameTooLong, Unexpected };
