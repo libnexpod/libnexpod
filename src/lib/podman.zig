@@ -86,7 +86,23 @@ pub fn call(allocator: std.mem.Allocator, argv: []const []const u8) (std.process
             if (code == 0) {
                 return result.stdout;
             } else {
-                log.err("Call to podman exited with: {}\n{s}\n", .{ code, result.stderr });
+                var argv_str = std.ArrayList(u8).init(allocator);
+                defer argv_str.deinit();
+                try argv_str.writer().writeByte('[');
+                if (argv.len > 0) {
+                    for (argv[0 .. argv.len - 1]) |e| {
+                        try argv_str.writer().print("{s}, ", .{e});
+                    }
+                    try argv_str.writer().print("{s}", .{argv[argv.len - 1]});
+                }
+                try argv_str.writer().writeByte(']');
+                const stderr = if (result.stderr.len > 0 and result.stderr[result.stderr.len - 1] == '\n')
+                    result.stderr[0 .. result.stderr.len - 1]
+                else
+                    result.stderr;
+                log.err("Call to podman exited with: {}", .{code});
+                log.err("stderr output: {s}", .{stderr});
+                log.err("argv was: {s}", .{argv_str.items});
                 return errors.PodmanErrors.PodmanFailed;
             }
         },
@@ -130,7 +146,9 @@ const create_base = [_][]const u8{
     "--ulimit",
     "host",
     "--userns",
-    "keep-ids",
+    "keep-id",
+    "--user",
+    "root:root",
     "--name",
 };
 
@@ -156,8 +174,9 @@ pub fn deleteContainer(allocator: std.mem.Allocator, id: []const u8, force: bool
     const argv = try std.mem.concat(allocator, []const u8, &[_][]const []const u8{
         &base_argv,
         if (force) &[_][]const u8{"--force"} else &[_][]const u8{},
-        [_][]const u8{id},
+        &[_][]const u8{id},
     });
+    defer allocator.free(argv);
     const stdout = try call(allocator, argv);
     allocator.free(stdout);
 }
@@ -169,7 +188,7 @@ pub fn startContainer(allocator: std.mem.Allocator, id: []const u8) (std.process
         "start",
         id,
     };
-    const stdout = try call(allocator, argv);
+    const stdout = try call(allocator, &argv);
     allocator.free(stdout);
 }
 
@@ -218,7 +237,19 @@ pub fn createContainer(args: struct {
     });
 
     // should just return the argv as a string under testing
-    return if (!builtin.is_test) try call(args.allocator, argv) else try std.mem.concat(args.allocator, u8, argv);
+    const result = if (!builtin.is_test) try call(args.allocator, argv) else try std.mem.concat(args.allocator, u8, argv);
+    errdefer args.allocator.free(result);
+    if (result.len > 0) {
+        if (result[result.len - 1] == '\n') {
+            const shortened = try args.allocator.dupe(u8, result[0 .. result.len - 1]);
+            args.allocator.free(result);
+            return shortened;
+        } else {
+            return result;
+        }
+    } else {
+        return result;
+    }
 }
 
 test createContainer {
@@ -409,7 +440,11 @@ fn createMountArgs(allocator: std.mem.Allocator, mounts: []const Mount) std.mem.
         try writer.writeAll("--mount=type=");
         switch (mount.kind) {
             .bind => |bind_mount| {
-                try writer.print("bind,rbind={},source={s}", .{ bind_mount.recursive, mount.source });
+                try writer.writeAll("bind,");
+                if (!bind_mount.recursive) {
+                    try writer.writeAll("bind-nonrecursive,");
+                }
+                try writer.print("source={s}", .{mount.source});
             },
             .volume => |volume_mount| {
                 try writer.print("volume,source={s}", .{volume_mount.name});
@@ -418,13 +453,19 @@ fn createMountArgs(allocator: std.mem.Allocator, mounts: []const Mount) std.mem.
                 try writer.writeAll("devpts");
             },
         }
-        try writer.print(",destination={s},ro={},dev={},exec={},suid={}", .{
+        try writer.print(",destination={s},ro={}", .{
             mount.destination,
             !mount.options.rw,
-            mount.options.dev,
-            mount.options.exec,
-            mount.options.suid,
         });
+        if (mount.options.dev) {
+            try writer.writeAll(",dev");
+        }
+        if (mount.options.exec) {
+            try writer.writeAll(",exec");
+        }
+        if (mount.options.suid) {
+            try writer.writeAll(",suid");
+        }
         if (mount.propagation != .none) {
             try writer.writeByte(',');
             try writer.writeAll(@tagName(mount.propagation));
@@ -438,13 +479,19 @@ fn createMountArgs(allocator: std.mem.Allocator, mounts: []const Mount) std.mem.
 }
 
 test createMountArgs {
-    const vol = Mount{ .source = "/root/.local/share/containers/storage/volumes/dsgdsfgdfsg/_data", .destination = "/run/test", .options = .{
-        .dev = true,
-        .exec = false,
-        .rw = false,
-        .suid = true,
-    }, .propagation = .none, .kind = .{ .volume = .{ .name = "vol1" } } };
-    const vol_expected = "--mount=type=volume,source=vol1,destination=/run/test,ro=true,dev=true,exec=false,suid=true";
+    const vol = Mount{
+        .source = "/root/.local/share/containers/storage/volumes/dsgdsfgdfsg/_data",
+        .destination = "/run/test",
+        .options = .{
+            .dev = true,
+            .exec = false,
+            .rw = false,
+            .suid = true,
+        },
+        .propagation = .none,
+        .kind = .{ .volume = .{ .name = "vol1" } },
+    };
+    const vol_expected = "--mount=type=volume,source=vol1,destination=/run/test,ro=true,dev,suid";
     const bind = Mount{
         .source = "/root/Documents",
         .destination = "/root/Documents",
@@ -457,7 +504,7 @@ test createMountArgs {
         .propagation = .rprivate,
         .kind = .{ .bind = .{ .recursive = true } },
     };
-    const bind_expected = "--mount=type=bind,rbind=true,source=/root/Documents,destination=/root/Documents,ro=false,dev=false,exec=true,suid=false,rprivate";
+    const bind_expected = "--mount=type=bind,source=/root/Documents,destination=/root/Documents,ro=false,exec,rprivate";
     const devpts = Mount{
         .source = "something",
         .destination = "/dev/pts",
@@ -467,7 +514,7 @@ test createMountArgs {
         .propagation = .runbindable,
         .kind = .{ .devpts = .{} },
     };
-    const devpts_expected = "--mount=type=devpts,destination=/dev/pts,ro=true,dev=false,exec=true,suid=false,runbindable";
+    const devpts_expected = "--mount=type=devpts,destination=/dev/pts,ro=true,exec,runbindable";
     const actual = try createMountArgs(std.testing.allocator, &[_]Mount{ vol, bind, devpts });
     defer {
         for (actual.items) |e| {
@@ -479,4 +526,51 @@ test createMountArgs {
     try std.testing.expectEqualStrings(vol_expected, actual.items[0]);
     try std.testing.expectEqualStrings(bind_expected, actual.items[1]);
     try std.testing.expectEqualStrings(devpts_expected, actual.items[2]);
+}
+
+pub fn createRunArgs(allocator: std.mem.Allocator, id: []const u8, command: []const []const u8, ttyNeeded: bool, env: std.process.EnvMap, work_dir: []const u8, username: []const u8) std.mem.Allocator.Error![]const []const u8 {
+    var result = std.ArrayList([]const u8).init(allocator);
+    errdefer {
+        for (result.items) |e| {
+            allocator.free(e);
+        }
+        result.deinit();
+    }
+
+    for (&[_][]const u8{
+        "podman",
+        "container",
+        "exec",
+        "--interactive",
+    }) |e| {
+        try utils.appendClone(&result, e);
+    }
+
+    try utils.appendClone(&result, "--workdir");
+    try utils.appendClone(&result, work_dir);
+    try utils.appendClone(&result, "--user");
+    try utils.appendClone(&result, username);
+
+    if (ttyNeeded) {
+        try utils.appendClone(&result, "--tty");
+    }
+
+    var iter = env.iterator();
+    while (iter.next()) |entry| {
+        try utils.appendClone(&result, "--env");
+        var buffer = std.ArrayList(u8).init(allocator);
+        defer buffer.deinit();
+        try (buffer.writer().print("{s}={s}", .{ entry.key_ptr.*, entry.value_ptr.* }));
+        const arg = try buffer.toOwnedSlice();
+        errdefer allocator.free(arg);
+        try result.append(arg);
+    }
+
+    try utils.appendClone(&result, id);
+
+    for (command) |e| {
+        try utils.appendClone(&result, e);
+    }
+
+    return try result.toOwnedSlice();
 }

@@ -43,16 +43,17 @@ pub fn ensure_user(allocator: std.mem.Allocator, info: Info) EnsureUserErrors!vo
                 switch (code) {
                     0 => {},
                     9 => {
-                        log.info("don't need to create group {s} with GID {s}\n", .{ group.name, gid });
+                        log.info("don't need to create group {s} with GID {s}", .{ group.name, gid });
                     },
                     else => {
-                        log.err("groupadd exited with error code {}\n{s}\n", .{ code, result.stderr });
+                        log.err("groupadd exited with error code {}", .{code});
+                        log.err("stderr was: {s}", .{result.stderr});
                         return error.GroupaddFailed;
                     },
                 }
             },
             else => |code| {
-                log.err("groupadd exited unexpectedly with {}\n", .{code});
+                log.err("groupadd exited unexpectedly with {}", .{code});
                 return error.GroupaddUnexpectedError;
             },
         }
@@ -107,10 +108,10 @@ pub fn ensure_user(allocator: std.mem.Allocator, info: Info) EnsureUserErrors!vo
             switch (code) {
                 0 => return,
                 9 => {
-                    log.info("don't need to create user {s} with uid {s}\nmodifying instead\n", .{ info.user, uid });
+                    log.info("don't need to create user {s} with uid {s} modifying instead", .{ info.user, uid });
                 },
                 else => {
-                    log.err("useradd exited with error code {}\n{s}\n", .{ code, add_result.stderr });
+                    log.err("useradd exited with error code {} and message {s}", .{ code, add_result.stderr });
                     return error.UseraddFailed;
                 },
             }

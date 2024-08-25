@@ -96,7 +96,11 @@ pub fn build(b: *std.Build) !void {
     b.getInstallStep().dependOn(daemon_target);
 
     // tests
-    const test_step = b.step("unittests", "Run unit tests");
+    const test_step = b.step("test", "Run all tests");
+
+    // unit tests
+    const unittest_step = b.step("unittests", "Run unit tests");
+    test_step.dependOn(unittest_step);
 
     // for the utils
     try addTestCases(b, test_step, "src/utils", &[_]Module{}, &target, &optimize, true);
@@ -115,6 +119,38 @@ pub fn build(b: *std.Build) !void {
     const daemon_unit_tests = b.step("daemonunittests", "Run only the unit tests of the daemon");
     try addTestCases(b, daemon_unit_tests, "src/daemon", &daemon_modules, &target, &optimize, false);
     test_step.dependOn(daemon_unit_tests);
+
+    // system tests
+    const systemtest_step = b.step("systemtests", "Run system tests");
+    test_step.dependOn(systemtest_step);
+    try addSystemTests(b, systemtest_step, "tests", &[_]Module{.{
+        .name = "libnexpod",
+        .module = lib,
+    }}, &target, &optimize, false);
+}
+
+fn addSystemTests(b: *std.Build, root_case: *std.Build.Step, dir_path: []const u8, modules: []const Module, target: *const std.Build.ResolvedTarget, optimize: *const std.builtin.OptimizeMode, libc: bool) !void {
+    var dir = try b.build_root.handle.openDir(dir_path, .{ .iterate = true });
+    defer dir.close();
+    var iter = dir.iterate();
+    while (try iter.next()) |entry| {
+        if (!std.mem.eql(u8, ".zig", std.fs.path.extension(entry.name))) {
+            continue;
+        }
+        const path = try std.mem.concat(b.allocator, u8, &[_][]const u8{ dir_path, "/", entry.name });
+        const test_case = b.addExecutable(.{
+            .name = entry.name,
+            .root_source_file = b.path(path),
+            .optimize = optimize.*,
+            .target = target.*,
+        });
+        if (libc) {
+            test_case.linkLibC();
+        }
+        addModules(&test_case.root_module, modules);
+        const run_test_case = b.addRunArtifact(test_case);
+        root_case.dependOn(&run_test_case.step);
+    }
 }
 
 fn addTestCases(b: *std.Build, root_case: *std.Build.Step, dir_path: []const u8, modules: []const Module, target: *const std.Build.ResolvedTarget, optimize: *const std.builtin.OptimizeMode, libc: bool) !void {

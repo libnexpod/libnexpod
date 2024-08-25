@@ -14,77 +14,48 @@ pub const ContainerConfig = container.ContainerConfig;
 pub const IdMapping = container.IdMapping;
 pub const Mount = container.Mount;
 
-pub fn ObjectIterator(object: type) type {
-    return struct {
-        objects: std.ArrayList(object),
-        index: usize = 0,
-
-        pub fn next(self: *@This()) ?*object {
-            if (self.*.index < self.*.objects.items.len) {
-                const result = &self.*.objects.items[self.*.index];
-                self.*.index += 1;
-                return result;
-            } else {
-                return null;
-            }
-        }
-
-        pub fn previous(self: *@This()) ?*object {
-            if (self.*.index > 0 and self.*.objects.items.len > 0) {
-                self.*.index -= 1;
-                return &self.*.objects.items[self.*.index];
-            } else {
-                return null;
-            }
-        }
-
-        pub fn deinit(self: @This()) void {
-            for (self.objects.items) |e| {
-                e.deinit();
-            }
-            self.objects.deinit();
-        }
-    };
-}
-
 pub const NexpodStorage = struct {
     allocator: std.mem.Allocator,
     key: []const u8,
 
-    pub fn getImageIterator(self: NexpodStorage) errors.ListErrors!ObjectIterator(image.Image) {
-        return ObjectIterator(image.Image){
-            .objects = try list.listImages(self.allocator),
-        };
+    pub fn getImages(self: NexpodStorage) errors.ListErrors!std.ArrayList(image.Image) {
+        return try list.listImages(self.allocator);
     }
 
-    test getImageIterator {
+    test getImages {
         const nps = try openNexpodStorage(std.testing.allocator, "");
         defer nps.deinit();
 
-        var image_iter = try nps.getImageIterator();
-        defer image_iter.deinit();
-        while (image_iter.next()) |img| {
+        var image_list = try nps.getImages();
+        defer {
+            for (image_list.items) |e| {
+                e.deinit();
+            }
+            image_list.deinit();
+        }
+        for (image_list.items) |*img| {
             try img.makeFull();
         }
-        while (image_iter.previous()) |_| {}
     }
 
-    pub fn getContainerIterator(self: NexpodStorage) errors.ListErrors!ObjectIterator(container.Container) {
-        return ObjectIterator(container.Container){
-            .objects = try list.listContainers(self.allocator, self.key),
-        };
+    pub fn getContainers(self: NexpodStorage) errors.ListErrors!std.ArrayList(container.Container) {
+        return try list.listContainers(self.allocator, self.key);
     }
 
-    test getContainerIterator {
+    test getContainers {
         const nps = try openNexpodStorage(std.testing.allocator, "");
         defer nps.deinit();
 
-        var container_iter = try nps.getContainerIterator();
-        defer container_iter.deinit();
-        while (container_iter.next()) |con| {
+        var container_list = try nps.getContainers();
+        defer {
+            for (container_list.items) |e| {
+                e.deinit();
+            }
+            container_list.deinit();
+        }
+        for (container_list.items) |*con| {
             try con.makeFull();
         }
-        while (container_iter.previous()) |_| {}
     }
 
     pub fn createContainer(self: NexpodStorage, args: struct {
@@ -178,61 +149,4 @@ pub fn openNexpodStorage(allocator: std.mem.Allocator, key: []const u8) errors.I
 test openNexpodStorage {
     var nps = try openNexpodStorage(std.testing.allocator, "test");
     nps.deinit();
-}
-
-test "ObjectIterator.next" {
-    var data_slice = [_]i32{
-        -5,
-        -4,
-        -3,
-        -2,
-        -1,
-        0,
-        1,
-        2,
-        3,
-        4,
-        5,
-    };
-    const data = std.ArrayList(i32).fromOwnedSlice(std.testing.allocator, &data_slice);
-    var iter_next = ObjectIterator(i32){
-        .objects = data,
-    };
-    try std.testing.expectEqual(null, iter_next.previous());
-    var i: usize = 0;
-    while (iter_next.next()) |actual| {
-        try std.testing.expectEqual(data_slice[i], actual.*);
-        i, _ = @addWithOverflow(i, 1);
-    }
-    try std.testing.expectEqual(null, iter_next.next());
-    try std.testing.expectEqual(data_slice.len, iter_next.index);
-}
-
-test "ObjectIterator.previous" {
-    var data_slice = [_]i32{
-        -5,
-        -4,
-        -3,
-        -2,
-        -1,
-        0,
-        1,
-        2,
-        3,
-        4,
-        5,
-    };
-    const data = std.ArrayList(i32).fromOwnedSlice(std.testing.allocator, &data_slice);
-    var iter_previous = ObjectIterator(i32){
-        .objects = data,
-        .index = data_slice.len,
-    };
-    try std.testing.expectEqual(null, iter_previous.next());
-    var i: usize = data_slice.len - 1;
-    while (iter_previous.previous()) |actual| {
-        try std.testing.expectEqual(data_slice[i], actual.*);
-        i, _ = @subWithOverflow(i, 1);
-    }
-    try std.testing.expectEqual(null, iter_previous.previous());
-    try std.testing.expectEqual(0, iter_previous.index);
 }

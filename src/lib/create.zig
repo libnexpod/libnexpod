@@ -26,15 +26,15 @@ pub fn createContainer(allocator: std.mem.Allocator, args: struct {
 
     const container_name = val: {
         if (std.mem.eql(u8, "", args.key)) {
-            break :val try std.mem.concat(arena_allocator, u8, &[_][]const u8{ args.key, "-", args.name });
-        } else {
             break :val args.name;
+        } else {
+            break :val try std.mem.concat(arena_allocator, u8, &[_][]const u8{ args.key, "-", args.name });
         }
     };
 
     const home_path = try getHomeDir(arena_allocator, args.home_dir, original_env);
 
-    var mounts = try std.ArrayList(Mount).init(arena_allocator);
+    var mounts = std.ArrayList(Mount).init(arena_allocator);
     try mounts.appendSlice(args.additional_mounts);
     collectMounts(&mounts, original_env, home_path) catch |err| switch (err) {
         error.ServiceNotYetSupported => {
@@ -52,12 +52,13 @@ pub fn createContainer(allocator: std.mem.Allocator, args: struct {
         .name = container_name,
         .image = args.image,
         .entrypoint_argv = entrypoint_argv,
+        .mounts = mounts.items,
     });
 
     const container_json = try podman.getContainerJSON(arena_allocator, id);
     const parsed = try std.json.parseFromSliceLeaky(Container, arena_allocator, container_json, .{});
 
-    return try parsed.copy(args.allocator);
+    return try parsed.copy(allocator);
 }
 
 fn getEntrypointArgv(arena_allocator: std.mem.Allocator, home: []const u8) errors.CreationErrors![]const []const u8 {
@@ -82,12 +83,12 @@ fn getEntrypointArgv(arena_allocator: std.mem.Allocator, home: []const u8) error
 
     const primary_group_name, const groups = try getGroupsWithMember(arena_allocator, name, primary_gid);
 
-    try result.append("--gid");
+    try result.append("--group");
     try result.append(try std.fmt.allocPrint(arena_allocator, "{}={s}", .{ primary_gid, primary_group_name }));
 
     var group_iter = groups.iterator();
     while (group_iter.next()) |entry| {
-        try result.append("--gid");
+        try result.append("--group");
         try result.append(try std.fmt.allocPrint(arena_allocator, "{}={s}", .{ entry.key_ptr.*, entry.value_ptr.* }));
     }
 
@@ -116,17 +117,20 @@ fn getGroupsWithMember(allocator: std.mem.Allocator, user: []const u8, primary_g
     var buffer = std.ArrayList(u8).init(allocator);
     buffer.deinit();
     while (true) {
-        try reader.streamUntilDelimiter(buffer.writer(), '\n', null);
+        reader.streamUntilDelimiter(buffer.writer(), '\n', null) catch |err| switch (err) {
+            error.EndOfStream => break,
+            else => |rest| return rest,
+        };
         defer buffer.clearRetainingCapacity();
 
         if (std.mem.eql(u8, "", buffer.items)) {
             break;
         }
 
-        var column_iterator = std.mem.tokenizeScalar(u8, buffer.items, ':');
+        var column_iterator = std.mem.splitScalar(u8, buffer.items, ':');
         const name = column_iterator.next() orelse return error.InvalidFileFormat;
         // skip over password/x
-        column_iterator.skip();
+        _ = column_iterator.next();
         const str_gid = column_iterator.next() orelse return error.InvalidFileFormat;
         const gid = try std.fmt.parseInt(std.posix.gid_t, str_gid, 10);
         if (gid == primary_group) {
@@ -169,10 +173,10 @@ fn getNamePrimaryGroupAndShellFromPasswd(allocator: std.mem.Allocator, uid: std.
             return error.UsernameNotFound;
         }
 
-        var iter = std.mem.tokenizeScalar(u8, buffer.items, ':');
+        var iter = std.mem.splitScalar(u8, buffer.items, ':');
         const name = iter.next() orelse return error.InvalidFileFormat;
         // skip over password/x
-        iter.skip();
+        _ = iter.next();
         const str_uid = iter.next() orelse return error.InvalidFileFormat;
         if (try std.fmt.parseInt(std.posix.uid_t, str_uid, 10) == uid) {
             const name_dupe = try allocator.dupe(u8, name);
@@ -180,8 +184,8 @@ fn getNamePrimaryGroupAndShellFromPasswd(allocator: std.mem.Allocator, uid: std.
             const str_gid = iter.next() orelse return error.InvalidFileFormat;
             const gid = try std.fmt.parseInt(std.posix.gid_t, str_gid, 10);
             // skip over GECOS and HOME
-            iter.skip();
-            iter.skip();
+            _ = iter.next();
+            _ = iter.next();
             const shell = iter.next() orelse return error.InvalidFileFormat;
             const shell_dupe = try allocator.dupe(u8, shell);
             errdefer allocator.free(shell_dupe);
@@ -190,6 +194,13 @@ fn getNamePrimaryGroupAndShellFromPasswd(allocator: std.mem.Allocator, uid: std.
         }
     }
     return error.UsernameNotFound;
+}
+
+test getNamePrimaryGroupAndShellFromPasswd {
+    const name, const group, const shell = try getNamePrimaryGroupAndShellFromPasswd(std.testing.allocator, 1000);
+    std.debug.print("name:  {s}\ngroup: {}\nshell: {s}\n", .{ name, group, shell });
+    std.testing.allocator.free(name);
+    std.testing.allocator.free(shell);
 }
 
 fn collectMounts(mounts: *std.ArrayList(Mount), env: std.process.EnvMap, home_path: []const u8) (error{ InvalidValueInEnvironment, NoRuntimeDirFound, ServiceNotYetSupported } || std.mem.Allocator.Error)!void {
@@ -410,7 +421,7 @@ fn collectMounts(mounts: *std.ArrayList(Mount), env: std.process.EnvMap, home_pa
     };
 
     for (static_default_mounts) |mount| {
-        if (utils.fileExists(mount.source)) {
+        if (!std.mem.eql(u8, "", mount.source) and utils.fileExists(mount.source)) {
             try mounts.*.append(mount);
         }
     }
@@ -488,7 +499,7 @@ fn collectMounts(mounts: *std.ArrayList(Mount), env: std.process.EnvMap, home_pa
 
     // nexpod stuff
     try mounts.*.append(Mount{
-        .source = nexpodd_path,
+        .source = env.get("NEXPODD_PATH") orelse nexpodd_path,
         .destination = nexpodd_path,
         .kind = .{ .bind = .{} },
         .options = .{ .rw = false },
@@ -496,7 +507,7 @@ fn collectMounts(mounts: *std.ArrayList(Mount), env: std.process.EnvMap, home_pa
     });
 }
 
-fn getHomeDir(arena_allocator: std.mem.ALlocator, home_dir: ?[]const u8, env: std.process.EnvMap) (error{NoHomeFound} || std.mem.Allocator.Error || std.posix.ReadLinkError)![]const u8 {
+fn getHomeDir(arena_allocator: std.mem.Allocator, home_dir: ?[]const u8, env: std.process.EnvMap) (error{NoHomeFound} || std.mem.Allocator.Error || std.posix.ReadLinkError)![]const u8 {
     var home_path = val: {
         if (home_dir) |home| {
             break :val home;
@@ -506,8 +517,11 @@ fn getHomeDir(arena_allocator: std.mem.ALlocator, home_dir: ?[]const u8, env: st
             return error.NoHomeFound;
         }
     };
-    var buffer: [std.fs.max_path_bytes]u8 = 0;
-    home_path = try std.fs.readLinkAbsolute(home_path, &buffer);
+    var buffer = [_]u8{0} ** std.fs.max_path_bytes;
+    home_path = std.fs.readLinkAbsolute(home_path, &buffer) catch |err| switch (err) {
+        error.NotLink => home_path,
+        else => |rest| return rest,
+    };
     return try arena_allocator.dupe(u8, home_path);
 }
 

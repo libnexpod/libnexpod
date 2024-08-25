@@ -32,6 +32,12 @@ pub fn append_format(container: *std.ArrayList([]const u8), comptime format: []c
     };
 }
 
+pub fn appendClone(container: *std.ArrayList([]const u8), str: []const u8) std.mem.Allocator.Error!void {
+    const dupe = try container.allocator.dupe(u8, str);
+    errdefer container.allocator.free(str);
+    try container.append(dupe);
+}
+
 pub fn stringLessThan(_: void, a: []const u8, b: []const u8) bool {
     return std.mem.lessThan(u8, a, b);
 }

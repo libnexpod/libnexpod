@@ -38,7 +38,7 @@ pub fn main() u8 {
             return @intFromEnum(MainExitCodes.SetupError);
         };
     }
-    log.info("finished setup\n", .{});
+    log.info("finished setup", .{});
     loop(allocator) catch |err| {
         log.err("encountered critical error during waiting: {s}\n", .{@errorName(err)});
         return @intFromEnum(MainExitCodes.LoopError);
@@ -109,7 +109,7 @@ fn loop(allocator: std.mem.Allocator) LoopErrors!void {
         },
         else => unreachable,
     }
-    log.info("finished loop setup\n", .{});
+    log.info("finished loop setup", .{});
     while (true) {
         var events: [1]std.os.linux.epoll_event = undefined;
         switch (std.posix.errno(std.os.linux.epoll_wait(epoll, (&events).ptr, 1, -1))) {
@@ -239,7 +239,7 @@ fn setup(allocator: std.mem.Allocator) SetupErrors!void {
             return error.OutOfMemory;
         },
         error.DoesntTakeValue, error.MissingValue, error.InvalidArgument => {
-            log.err("invalid usage: {s}", .{diag.arg});
+            log.err("invalid usage of {s}: {s}", .{ diag.arg, @errorName(err) });
             return error.InvalidUsage;
         },
         error.InvalidCharacter => {
@@ -337,7 +337,7 @@ fn create_nexpod_files(allocator: std.mem.Allocator, uid: std.posix.uid_t, prima
     if (!utils.fileExists(nexpod_dir)) {
         try std.fs.makeDirAbsolute(nexpod_dir);
     }
-    var dir = try std.fs.openDirAbsolute(nexpod_dir, .{});
+    var dir = try std.fs.openDirAbsolute(nexpod_dir, .{ .iterate = true });
     errdefer dir.close();
     try dir.chown(uid, primary_gid);
     (try std.fs.createFileAbsolute("/run/.nexpodenv", .{})).close();

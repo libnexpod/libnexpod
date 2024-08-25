@@ -100,7 +100,58 @@ pub const Container = union(enum) {
         }
     }
 
-    pub fn update(self: *Container) errors.UpdateErrors!void {
+    pub fn getStatus(self: Container) State {
+        switch (self) {
+            .minimal => |this| return this.state,
+            .full => |this| return this.state,
+        }
+    }
+
+    pub fn runCommand(self: Container, args: struct {
+        allocator: std.mem.Allocator,
+        argv: []const []const u8,
+        env: ?*std.process.EnvMap = null,
+        stdin_behaviour: std.process.Child.StdIo,
+        stdout_behaviour: std.process.Child.StdIo,
+        stderr_behaviour: std.process.Child.StdIo,
+        working_dir: []const u8,
+    }) errors.RunCommandErrors!struct { std.process.Child, []const []const u8 } {
+        if (self.getStatus() != .Running) {
+            return error.ContainerNotRunning;
+        }
+
+        var env = if (args.env != null)
+            args.env.?.*
+        else
+            try std.process.getEnvMap(args.allocator);
+        defer if (args.env == null) {
+            env.deinit();
+        };
+
+        const ttyNeeded = args.stdin_behaviour == .Inherit and args.stdout_behaviour == .Inherit and std.io.getStdIn().isTty() and std.io.getStdOut().isTty();
+
+        const username = try getUserName(args.allocator);
+        defer args.allocator.free(username);
+
+        const argv = try podman.createRunArgs(args.allocator, self.getId(), args.argv, ttyNeeded, env, args.working_dir, username);
+        errdefer {
+            for (argv) |e| {
+                args.allocator.free(e);
+            }
+            args.allocator.free(argv);
+        }
+
+        var process = std.process.Child.init(argv, args.allocator);
+        process.stdin_behavior = args.stdin_behaviour;
+        process.stdout_behavior = args.stdout_behaviour;
+        process.stderr_behavior = args.stderr_behaviour;
+        process.env_map = args.env;
+
+        try process.spawn();
+        return .{ process, argv };
+    }
+
+    pub fn updateInfo(self: *Container) errors.UpdateErrors!void {
         const id = self.getId();
         const allocator = self.getAllocator();
         const json = try podman.getContainerJSON(allocator, id);
@@ -125,7 +176,7 @@ pub const Container = union(enum) {
         // podman sadly doesn't tell us if the container succeeded in starting or immediately died
         // so we instead need to ask for it manually
         try podman.startContainer(allocator, id);
-        try self.update();
+        try self.updateInfo();
     }
 
     // the container will be in the full information state afterwards if podman itself doesn't error out or memory runs out
@@ -133,7 +184,7 @@ pub const Container = union(enum) {
         const id = self.getId();
         const allocator = self.getAllocator();
         try podman.stopContainer(allocator, id);
-        try self.update();
+        try self.updateInfo();
     }
 
     pub fn getId(self: Container) []const u8 {
@@ -146,7 +197,7 @@ pub const Container = union(enum) {
     pub fn makeFull(self: *Container) errors.UpdateErrors!void {
         switch (self.*) {
             .full => {},
-            .minimal => try self.update(),
+            .minimal => try self.updateInfo(),
         }
     }
 
@@ -404,10 +455,10 @@ pub const Container = union(enum) {
                     mount.options.exec = true;
                 } else if (std.mem.eql(u8, "dev", op)) {
                     mount.options.dev = true;
-                } else if (std.mem.eql(u8, "nosuid", op) or std.mem.eql(u8, "noexec", op) or std.mem.eql(u8, "nodev", op)) {
-                    continue;
                 } else if (std.mem.eql(u8, "rbind", op)) {
                     mount.kind.bind.recursive = true;
+                } else if (std.mem.eql(u8, "nosuid", op) or std.mem.eql(u8, "noexec", op) or std.mem.eql(u8, "nodev", op) or std.mem.eql(u8, "bind", op)) {
+                    continue;
                 } else {
                     log.info("encountered unknown mount option, please report upstream if you think it should be added: {s}\n", .{op});
                 }
@@ -512,6 +563,28 @@ pub const Container = union(enum) {
         }
     }
 };
+
+fn getUserName(allocator: std.mem.Allocator) (error{ InvalidFileFormat, StreamTooLong, EndOfStream } || std.fmt.ParseIntError || std.mem.Allocator.Error || std.fs.File.OpenError || std.fs.File.ReadError)![]const u8 {
+    const uid = std.os.linux.getuid();
+    var file = try std.fs.openFileAbsolute("/etc/passwd", .{});
+    defer file.close();
+    var buffered_reader = std.io.bufferedReader(file.reader());
+    const reader = buffered_reader.reader();
+
+    var buffer = std.ArrayList(u8).init(allocator);
+    defer buffer.deinit();
+    while (true) {
+        defer buffer.clearRetainingCapacity();
+        try reader.streamUntilDelimiter(buffer.writer(), '\n', null);
+        var iter = std.mem.tokenizeScalar(u8, buffer.items, ':');
+        const name = iter.next() orelse return error.InvalidFileFormat;
+        _ = iter.next();
+        const uid_str = iter.next() orelse return error.InvalidFileFormat;
+        if (try std.fmt.parseInt(std.posix.uid_t, uid_str, 10) == uid) {
+            return try allocator.dupe(u8, name);
+        }
+    }
+}
 
 const ContainerMarshall = struct {
     Id: []const u8,
