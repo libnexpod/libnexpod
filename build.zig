@@ -130,6 +130,10 @@ pub fn build(b: *std.Build) !void {
 }
 
 fn addSystemTests(b: *std.Build, root_case: *std.Build.Step, dir_path: []const u8, modules: []const Module, target: *const std.Build.ResolvedTarget, optimize: *const std.builtin.OptimizeMode, libc: bool) !void {
+    const setup_step = b.addSystemCommand(&[_][]const u8{
+        "tests/setup.sh",
+    });
+
     var dir = try b.build_root.handle.openDir(dir_path, .{ .iterate = true });
     defer dir.close();
     var iter = dir.iterate();
@@ -148,6 +152,9 @@ fn addSystemTests(b: *std.Build, root_case: *std.Build.Step, dir_path: []const u
             test_case.linkLibC();
         }
         addModules(&test_case.root_module, modules);
+
+        test_case.step.dependOn(&setup_step.step);
+
         const run_test_case = b.addRunArtifact(test_case);
         root_case.dependOn(&run_test_case.step);
     }

@@ -44,7 +44,7 @@ fi
 dirname="nexpod-host-shim"
 git clone https://github.com/KilianHanich/arch-nexpod-host-shim-pkg "$dirname"
 pushd "$dirname"
-git checkout 32c318ac496edb650f2ac12e26c4485552953d1f
+git checkout 9bc65ad6e43600cdde3ac8fae9f3220ebf1040cb
 
 # temporary user because makepkg doesn't want to be run as root
 useradd --create-home builduser
@@ -52,7 +52,7 @@ chown builduser:builduser -R .
 sudo -u builduser makepkg --noconfirm
 
 # install
-pacman --noconfirm -U ./nexpod-host-shim-0.0.0-1-x86_64.pkg.tar.zst
+pacman --noconfirm -U ./nexpod-host-shim-0.0.0-2-x86_64.pkg.tar.zst
 
 # clean up
 userdel --remove builduser
