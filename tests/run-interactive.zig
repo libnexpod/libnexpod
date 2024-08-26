@@ -23,7 +23,7 @@ pub fn main() !void {
         const img = images.items[0];
 
         var con = try nps.createContainer(.{
-            .name = "example",
+            .name = "run-interactive",
             .image = img,
         });
         defer {
@@ -36,9 +36,10 @@ pub fn main() !void {
         var process, const argv = try con.runCommand(.{
             .allocator = allocator,
             .argv = &[_][]const u8{
-                "whoami",
+                "bash",
+                "--login",
             },
-            .stdin_behaviour = .Ignore,
+            .stdin_behaviour = .Pipe,
             .stdout_behaviour = .Pipe,
             .stderr_behaviour = .Pipe,
             .working_dir = "/",
@@ -50,7 +51,40 @@ pub fn main() !void {
             allocator.free(argv);
         }
 
-        const max_bytes = std.math.pow(usize, 2, 32);
+        var env = try std.process.getEnvMap(allocator);
+        defer env.deinit();
+        const home_dir = env.get("HOME") orelse {
+            std.log.warn("no HOME environment variable, aborting test\n", .{});
+            return;
+        };
+
+        const stdin = process.stdin.?.writer();
+        const script = [_][]const []const u8{
+            &[_][]const u8{
+                "pwd",
+            },
+            &[_][]const u8{
+                "echo",
+                home_dir,
+            },
+            &[_][]const u8{
+                "cd",
+            },
+            &[_][]const u8{
+                "pwd",
+            },
+            &[_][]const u8{
+                "exit",
+            },
+        };
+        for (script) |command| {
+            for (command) |c| {
+                try stdin.print("{s} ", .{c});
+            }
+            try stdin.writeByte('\n');
+        }
+
+        const max_bytes = comptime std.math.pow(usize, 2, 32);
 
         var stdout = std.ArrayList(u8).init(allocator);
         defer stdout.deinit();
@@ -58,13 +92,17 @@ pub fn main() !void {
         defer stderr.deinit();
         try process.collectOutput(&stdout, &stderr, max_bytes);
 
-        std.log.debug("whoami output: {s}", .{stdout.items});
+        _ = try process.wait();
 
-        const term = try process.wait();
-        try std.testing.expect(.Exited == term);
-        if (term.Exited != 0) {
-            std.log.err("{s}", .{stderr.items});
-            return error.WhoAmIFailed;
-        }
+        const expected_output = try std.mem.concat(allocator, u8, &[_][]const u8{
+            "/\n",
+            home_dir,
+            "\n",
+            home_dir,
+            "\n",
+        });
+        defer allocator.free(expected_output);
+        try std.testing.expectEqualStrings("", stderr.items);
+        try std.testing.expectEqualStrings(expected_output, stdout.items);
     }
 }

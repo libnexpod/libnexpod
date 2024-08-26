@@ -23,7 +23,7 @@ pub fn main() !void {
         const img = images.items[0];
 
         var con = try nps.createContainer(.{
-            .name = "example",
+            .name = "host-ipc",
             .image = img,
         });
         defer {
@@ -33,10 +33,18 @@ pub fn main() !void {
 
         try con.start();
 
+        const path = try std.fmt.allocPrint(allocator, "/proc/{}/ns/ipc", .{std.os.linux.getpid()});
+        defer allocator.free(path);
+        var buffer = [_]u8{0} ** std.fs.max_path_bytes;
+        const expected = try std.fmt.allocPrint(allocator, "{s}\n", .{try std.posix.readlink(path, &buffer)});
+        defer allocator.free(expected);
+
         var process, const argv = try con.runCommand(.{
             .allocator = allocator,
             .argv = &[_][]const u8{
-                "whoami",
+                "bash",
+                "-c",
+                "readlink /proc/$$/ns/ipc",
             },
             .stdin_behaviour = .Ignore,
             .stdout_behaviour = .Pipe,
@@ -58,13 +66,9 @@ pub fn main() !void {
         defer stderr.deinit();
         try process.collectOutput(&stdout, &stderr, max_bytes);
 
-        std.log.debug("whoami output: {s}", .{stdout.items});
+        _ = try process.wait();
 
-        const term = try process.wait();
-        try std.testing.expect(.Exited == term);
-        if (term.Exited != 0) {
-            std.log.err("{s}", .{stderr.items});
-            return error.WhoAmIFailed;
-        }
+        try std.testing.expectEqualStrings("", stderr.items);
+        try std.testing.expectEqualStrings(expected, stdout.items);
     }
 }

@@ -23,7 +23,7 @@ pub fn main() !void {
         const img = images.items[0];
 
         var con = try nps.createContainer(.{
-            .name = "example",
+            .name = "run-Env-Var",
             .image = img,
         });
         defer {
@@ -33,15 +33,24 @@ pub fn main() !void {
 
         try con.start();
 
+        const variable = "TEST_VAR";
+        const value = "This is the value";
+        var env = try std.process.getEnvMap(allocator);
+        defer env.deinit();
+        try env.put(variable, value);
+
         var process, const argv = try con.runCommand(.{
             .allocator = allocator,
             .argv = &[_][]const u8{
-                "whoami",
+                "bash",
+                "-c",
+                "echo $" ++ variable,
             },
             .stdin_behaviour = .Ignore,
             .stdout_behaviour = .Pipe,
             .stderr_behaviour = .Pipe,
             .working_dir = "/",
+            .env = &env,
         });
         defer {
             for (argv) |arg| {
@@ -50,7 +59,7 @@ pub fn main() !void {
             allocator.free(argv);
         }
 
-        const max_bytes = std.math.pow(usize, 2, 32);
+        const max_bytes = comptime std.math.pow(usize, 2, 32);
 
         var stdout = std.ArrayList(u8).init(allocator);
         defer stdout.deinit();
@@ -58,13 +67,9 @@ pub fn main() !void {
         defer stderr.deinit();
         try process.collectOutput(&stdout, &stderr, max_bytes);
 
-        std.log.debug("whoami output: {s}", .{stdout.items});
+        _ = try process.wait();
 
-        const term = try process.wait();
-        try std.testing.expect(.Exited == term);
-        if (term.Exited != 0) {
-            std.log.err("{s}", .{stderr.items});
-            return error.WhoAmIFailed;
-        }
+        try std.testing.expectEqualStrings("", stderr.items);
+        try std.testing.expectEqualStrings(value ++ "\n", stdout.items);
     }
 }

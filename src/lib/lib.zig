@@ -4,7 +4,7 @@ const list = @import("list.zig");
 const create = @import("create.zig");
 const image = @import("image.zig");
 const container = @import("container.zig");
-const errors = @import("errors.zig");
+pub const errors = @import("errors.zig");
 const log = @import("logging");
 
 pub const Image = image.Image;
@@ -61,7 +61,7 @@ pub const NexpodStorage = struct {
     pub fn createContainer(self: NexpodStorage, args: struct {
         name: []const u8,
         env: ?std.process.EnvMap = null,
-        additional_mounts: []const Mount,
+        additional_mounts: []const Mount = &[_]Mount{},
         home: ?[]const u8 = null,
         image: Image,
     }) errors.CreationErrors!container.Container {

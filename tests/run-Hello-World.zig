@@ -23,7 +23,7 @@ pub fn main() !void {
         const img = images.items[0];
 
         var con = try nps.createContainer(.{
-            .name = "example",
+            .name = "run-Hello-World",
             .image = img,
         });
         defer {
@@ -36,7 +36,9 @@ pub fn main() !void {
         var process, const argv = try con.runCommand(.{
             .allocator = allocator,
             .argv = &[_][]const u8{
-                "whoami",
+                "echo",
+                "Hello",
+                "World",
             },
             .stdin_behaviour = .Ignore,
             .stdout_behaviour = .Pipe,
@@ -58,13 +60,9 @@ pub fn main() !void {
         defer stderr.deinit();
         try process.collectOutput(&stdout, &stderr, max_bytes);
 
-        std.log.debug("whoami output: {s}", .{stdout.items});
+        _ = try process.wait();
 
-        const term = try process.wait();
-        try std.testing.expect(.Exited == term);
-        if (term.Exited != 0) {
-            std.log.err("{s}", .{stderr.items});
-            return error.WhoAmIFailed;
-        }
+        try std.testing.expectEqualStrings("", stderr.items);
+        try std.testing.expectEqualStrings("Hello World\n", stdout.items);
     }
 }

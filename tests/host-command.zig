@@ -8,7 +8,11 @@ pub fn main() !void {
     };
     const allocator = gpa.allocator();
 
-    const nps = try libnexpod.openNexpodStorage(allocator, "libnexpod-test");
+    const key = "libnexpod-test";
+    const name = "host-command";
+    const container_name = key ++ "-" ++ name;
+
+    const nps = try libnexpod.openNexpodStorage(allocator, key);
     defer nps.deinit();
 
     var images = try nps.getImages();
@@ -23,7 +27,7 @@ pub fn main() !void {
         const img = images.items[0];
 
         var con = try nps.createContainer(.{
-            .name = "example",
+            .name = name,
             .image = img,
         });
         defer {
@@ -33,10 +37,16 @@ pub fn main() !void {
 
         try con.start();
 
+        // if you really think about it, the amounts of indirections (especially if you run this command inside of a container) is insane
         var process, const argv = try con.runCommand(.{
             .allocator = allocator,
             .argv = &[_][]const u8{
-                "whoami",
+                "podman",
+                "container",
+                "inspect",
+                "--format",
+                "{{.Name}}",
+                con.getId(),
             },
             .stdin_behaviour = .Ignore,
             .stdout_behaviour = .Pipe,
@@ -50,7 +60,7 @@ pub fn main() !void {
             allocator.free(argv);
         }
 
-        const max_bytes = std.math.pow(usize, 2, 32);
+        const max_bytes = comptime std.math.pow(usize, 2, 32);
 
         var stdout = std.ArrayList(u8).init(allocator);
         defer stdout.deinit();
@@ -58,13 +68,9 @@ pub fn main() !void {
         defer stderr.deinit();
         try process.collectOutput(&stdout, &stderr, max_bytes);
 
-        std.log.debug("whoami output: {s}", .{stdout.items});
+        _ = try process.wait();
 
-        const term = try process.wait();
-        try std.testing.expect(.Exited == term);
-        if (term.Exited != 0) {
-            std.log.err("{s}", .{stderr.items});
-            return error.WhoAmIFailed;
-        }
+        try std.testing.expectEqualStrings("", stderr.items);
+        try std.testing.expectEqualStrings(container_name ++ "\n", stdout.items);
     }
 }

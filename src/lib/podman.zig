@@ -537,7 +537,7 @@ pub fn createRunArgs(allocator: std.mem.Allocator, id: []const u8, command: []co
         result.deinit();
     }
 
-    for (&[_][]const u8{
+    for ([_][]const u8{
         "podman",
         "container",
         "exec",
