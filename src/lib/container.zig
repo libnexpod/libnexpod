@@ -5,6 +5,7 @@ const zeit = @import("zeit");
 const podman = @import("podman.zig");
 const errors = @import("errors.zig");
 
+/// The current Run State a container can be in.
 pub const State = enum {
     Exited,
     Running,
@@ -12,6 +13,7 @@ pub const State = enum {
     Unknown,
 };
 
+/// The way mount propagation is handled.
 pub const PropagationOptions = enum {
     shared,
     rshared,
@@ -24,6 +26,7 @@ pub const PropagationOptions = enum {
     none,
 };
 
+/// The description of a Mount as expected and given by Podman in a parsed way.
 pub const Mount = struct {
     source: []const u8,
     destination: []const u8,
@@ -45,6 +48,10 @@ pub const Mount = struct {
     },
 };
 
+/// A description of the mapping between the different IDs between host and container.
+/// `start_container` describes with which ID the map starts on the container side.
+/// `start_host` describes with which ID the map starts on the host side.
+/// `amount` is the amount of IDs which get mapped.
 pub fn IdMapping(kind: type) type {
     return struct {
         start_container: kind,
@@ -53,6 +60,7 @@ pub fn IdMapping(kind: type) type {
     };
 }
 
+/// A collection of configuration information of a given container.
 pub const ContainerConfig = struct {
     hostname: []const u8,
     cmd: []const []const u8,
@@ -65,6 +73,8 @@ pub const ContainerConfig = struct {
     umask: std.posix.mode_t,
 };
 
+/// The handle to a NexpodContainer with either minimal or full information amount.
+/// You must call deinit to free the used resources.
 pub const Container = union(enum) {
     minimal: struct {
         allocator: std.mem.Allocator,
@@ -88,6 +98,7 @@ pub const Container = union(enum) {
         config: ContainerConfig,
     },
 
+    /// Frees all resources of this handle.
     pub fn deinit(self: Container) void {
         switch (self) {
             .minimal => |this| {
@@ -100,6 +111,7 @@ pub const Container = union(enum) {
         }
     }
 
+    /// Gets the current `State` of container regardless of information amount.
     pub fn getStatus(self: Container) State {
         switch (self) {
             .minimal => |this| return this.state,
@@ -107,6 +119,10 @@ pub const Container = union(enum) {
         }
     }
 
+    /// Starts a command inside of the container.
+    /// It gives you the handle to the child process and the argv which was used for it which you must free manually with the given allocator (each argument and the whole slice).
+    /// You can influence the way this command is spawned with the `args` struct.
+    /// The caller owns all parameters.
     pub fn runCommand(self: Container, args: struct {
         allocator: std.mem.Allocator,
         argv: []const []const u8,
@@ -151,6 +167,7 @@ pub const Container = union(enum) {
         return .{ process, argv };
     }
 
+    /// Updates the information about the container and leaves it afterswards always in full information state.
     pub fn updateInfo(self: *Container) errors.UpdateErrors!void {
         const id = self.getId();
         const allocator = self.getAllocator();
@@ -163,13 +180,15 @@ pub const Container = union(enum) {
         self.* = new;
     }
 
+    /// Deletes the container from disk. Use `force = true` if you want to delete it even if it currently running.
+    /// It does free the resources of this handle.
     pub fn delete(self: *Container, force: bool) (std.process.Child.RunError || errors.PodmanErrors)!void {
         const id = self.getId();
         const allocator = self.getAllocator();
         try podman.deleteContainer(allocator, id, force);
     }
 
-    // the container will be in the full information state afterwards if podman itself doesn't error out or memory runs out
+    /// Tries to starts the container. The handle information will be updated afterwards.
     pub fn start(self: *Container) errors.UpdateErrors!void {
         const id = self.getId();
         const allocator = self.getAllocator();
@@ -179,7 +198,7 @@ pub const Container = union(enum) {
         try self.updateInfo();
     }
 
-    // the container will be in the full information state afterwards if podman itself doesn't error out or memory runs out
+    /// Tries to stop the container. The handle information will be updated afterwards.
     pub fn stop(self: *Container) errors.UpdateErrors!void {
         const id = self.getId();
         const allocator = self.getAllocator();
@@ -187,6 +206,7 @@ pub const Container = union(enum) {
         try self.updateInfo();
     }
 
+    /// Gets the ID of the container regardless of information amount.
     pub fn getId(self: Container) []const u8 {
         switch (self) {
             .minimal => |this| return this.id,
@@ -194,6 +214,8 @@ pub const Container = union(enum) {
         }
     }
 
+    /// Turn the amount of information of this handle from minimal to full.
+    /// If it is already full, this is a NOOP.
     pub fn makeFull(self: *Container) errors.UpdateErrors!void {
         switch (self.*) {
             .full => {},
@@ -201,6 +223,7 @@ pub const Container = union(enum) {
         }
     }
 
+    /// Creates a copy of this handle with allocator given to this function in whatever information state it currently is.
     pub fn copy(self: Container, allocator: std.mem.Allocator) std.mem.Allocator.Error!Container {
         switch (self) {
             .minimal => |this| {
@@ -313,7 +336,7 @@ pub const Container = union(enum) {
         }
     }
 
-    // this function is intended to be used by the std.json parsing framework and is leaky
+    /// This function is intended to be used by the std.json parsing framework and is leaky.
     pub fn jsonParse(allocator: std.mem.Allocator, scanner_or_reader: anytype, options: std.json.ParseOptions) (std.json.ParseError(@TypeOf(scanner_or_reader.*)) || std.mem.Allocator.Error)!Container {
         const parsed = try std.json.parseFromTokenSourceLeaky(ContainerMarshall, allocator, scanner_or_reader, .{
             .allocate = options.allocate,

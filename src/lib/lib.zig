@@ -13,11 +13,14 @@ pub const Container = container.Container;
 pub const ContainerConfig = container.ContainerConfig;
 pub const IdMapping = container.IdMapping;
 pub const Mount = container.Mount;
+pub const State = container.State;
 
+/// a management handle to nexpod related stuff
 pub const NexpodStorage = struct {
     allocator: std.mem.Allocator,
     key: []const u8,
 
+    /// creates a list of all available nexpod images on disk in minimal form
     pub fn getImages(self: NexpodStorage) errors.ListErrors!std.ArrayList(image.Image) {
         return try list.listImages(self.allocator);
     }
@@ -38,6 +41,7 @@ pub const NexpodStorage = struct {
         }
     }
 
+    /// creates a list of all currently existing nexpod containers with the current key in minimal form
     pub fn getContainers(self: NexpodStorage) errors.ListErrors!std.ArrayList(container.Container) {
         return try list.listContainers(self.allocator, self.key);
     }
@@ -58,6 +62,11 @@ pub const NexpodStorage = struct {
         }
     }
 
+    /// creates a container based on passed in information and gives you back info to the container in full form
+    /// you can pass in additional mounts via the `additional_mounts` options if you need to
+    /// it uses the current process environment if you don't pass one in manually
+    /// it uses the home directory of the current user if you don't specify one manually
+    /// the ownership of all parameters stays with the caller
     pub fn createContainer(self: NexpodStorage, args: struct {
         name: []const u8,
         env: ?std.process.EnvMap = null,
@@ -75,11 +84,15 @@ pub const NexpodStorage = struct {
         });
     }
 
+    /// returns necessary resources of ONLY this object storage
+    /// you are expected to deinitialize all resources gained from this object (directly or indirectly) before you do this
     pub fn deinit(self: NexpodStorage) void {
         self.allocator.free(self.key);
     }
 };
 
+/// checks if podman is callable and then initializes a NexpodStorage object
+/// the ownership of the parameters stays with the caller, but the storage object is not allowed to outlive the allocator
 pub fn openNexpodStorage(allocator: std.mem.Allocator, key: []const u8) errors.InitStorageErrors!NexpodStorage {
     // check if podman exists
     const check_version_argv = [_][]const u8{ "podman", "version" };

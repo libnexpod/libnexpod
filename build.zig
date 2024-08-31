@@ -127,6 +127,22 @@ pub fn build(b: *std.Build) !void {
         .name = "libnexpod",
         .module = lib,
     }}, &target, &optimize, false);
+
+    const docs = b.step("docs", "generate documentation");
+    {
+        const lib_doc_helper = b.addObject(.{
+            .name = "lib",
+            .root_source_file = b.path("src/lib/lib.zig"),
+            .target = target,
+            .optimize = optimize,
+        });
+        const lib_docs = lib_doc_helper.getEmittedDocs();
+        docs.dependOn(&b.addInstallDirectory(.{
+            .source_dir = lib_docs,
+            .install_dir = .prefix,
+            .install_subdir = "libnexpod/docs",
+        }).step);
+    }
 }
 
 fn addSystemTests(b: *std.Build, root_case: *std.Build.Step, dir_path: []const u8, modules: []const Module, target: *const std.Build.ResolvedTarget, optimize: *const std.builtin.OptimizeMode, libc: bool) !void {

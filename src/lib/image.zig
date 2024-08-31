@@ -4,12 +4,15 @@ const errors = @import("errors.zig");
 const log = @import("logging");
 const podman = @import("podman.zig");
 
+/// a combination of the repository, the name and the tag of an image
 pub const Name = struct {
     repo: []const u8,
     name: []const u8,
     tag: []const u8,
 };
 
+/// The handle to the available information about a Nexpod image.
+/// You must call deinit to free the used resources.
 pub const Image = union(enum) {
     minimal: struct {
         allocator: std.mem.Allocator,
@@ -32,12 +35,14 @@ pub const Image = union(enum) {
         },
     },
 
+    /// This function delete the image from disk but does NOT update the information about and also doesn't free any resources.
     pub fn delete(self: *Image) (std.process.Child.RunError || errors.PodmanErrors)!void {
         const id = self.getId();
         const allocator = self.getAllocator();
         try podman.deleteImage(allocator, id);
     }
 
+    /// Gets the ID of the image regardless of the current amount of available information.
     pub fn getId(self: Image) []const u8 {
         switch (self) {
             .minimal => |this| return this.id,
@@ -45,6 +50,8 @@ pub const Image = union(enum) {
         }
     }
 
+    /// Turn the amount of information of this handle from minimal to full.
+    /// If it is already full, this is a NOOP.
     pub fn makeFull(self: *Image) errors.UpdateErrors!void {
         switch (self.*) {
             .full => {},
@@ -69,6 +76,7 @@ pub const Image = union(enum) {
         }
     }
 
+    /// Creates a copy of this handle with allocator given to this function in whatever information state it currently is.
     pub fn copy(self: Image, allocator: std.mem.Allocator) std.mem.Allocator.Error!Image {
         switch (self) {
             .minimal => |this| {
@@ -187,6 +195,7 @@ pub const Image = union(enum) {
         }
     }
 
+    /// Frees all resources of this handle.
     pub fn deinit(self: Image) void {
         switch (self) {
             .full => |this| {
@@ -204,7 +213,7 @@ pub const Image = union(enum) {
         }
     }
 
-    // this function is intended to be used by the std.json parsing framework and is leaky
+    /// This function is intended to be used by the std.json parsing framework and is leaky.
     pub fn jsonParse(allocator: std.mem.Allocator, scanner_or_reader: anytype, options: std.json.ParseOptions) (std.json.ParseError(@TypeOf(scanner_or_reader.*)) || std.mem.Allocator.Error)!Image {
         const parsed = try std.json.parseFromTokenSourceLeaky(ImageMarshall, allocator, scanner_or_reader, .{
             .allocate = options.allocate,
