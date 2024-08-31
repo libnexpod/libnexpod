@@ -23,7 +23,7 @@ pub const NexpodStorage = struct {
     }
 
     test getImages {
-        const nps = try openNexpodStorage(std.testing.allocator, "");
+        const nps = try openNexpodStorage(std.testing.allocator, "libnexpod-unittest");
         defer nps.deinit();
 
         var image_list = try nps.getImages();

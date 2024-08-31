@@ -42,6 +42,6 @@ fn run(comptime key: []const u8, comptime name: []const u8) !void {
 
 pub fn main() !void {
     // while they will have the same name in podman, they don't have according to out key concept
-    try run("libnexpod-test", "create-name-correct");
-    try run("", "libnexpod-test-create-name-correct");
+    try run("libnexpod-systemtest", "create-name-correct");
+    try run("", "libnexpod-systemtest-create-name-correct");
 }

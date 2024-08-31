@@ -200,7 +200,7 @@ pub fn stopContainer(allocator: std.mem.Allocator, id: []const u8) (std.process.
         "--ignore",
         id,
     };
-    const stdout = try call(allocator, argv);
+    const stdout = try call(allocator, &argv);
     allocator.free(stdout);
 }
 

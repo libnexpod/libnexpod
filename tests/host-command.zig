@@ -8,7 +8,7 @@ pub fn main() !void {
     };
     const allocator = gpa.allocator();
 
-    const key = "libnexpod-test";
+    const key = "libnexpod-systemtest";
     const name = "host-command";
     const container_name = key ++ "-" ++ name;
 

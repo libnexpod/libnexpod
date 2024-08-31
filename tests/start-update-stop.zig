@@ -1,24 +1,6 @@
 const std = @import("std");
 const libnexpod = @import("libnexpod");
 
-pub const std_options = .{
-    .logFn = logFilter,
-};
-
-var libnexpod_logs: u8 = 0;
-fn logFilter(
-    comptime level: std.log.Level,
-    comptime scope: @TypeOf(.EnumLiteral),
-    comptime format: []const u8,
-    args: anytype,
-) void {
-    if (scope == .libnexpod) {
-        libnexpod_logs += 1;
-    } else {
-        std.log.defaultLog(level, scope, format, args);
-    }
-}
-
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer if (gpa.deinit() == .leak) {
@@ -40,10 +22,23 @@ pub fn main() !void {
     if (images.items.len > 0) {
         const img = images.items[0];
 
-        try std.testing.expectError(libnexpod.errors.PodmanErrors.PodmanFailed, nps.createContainer(.{
-            .name = "äß",
+        var con = try nps.createContainer(.{
+            .name = "example",
             .image = img,
-        }));
-        try std.testing.expectEqual(3, libnexpod_logs);
+        });
+        defer {
+            con.delete(true) catch |err| std.log.err("error encountered while deleting container: {s}", .{@errorName(err)});
+            con.deinit();
+        }
+
+        try std.testing.expectEqual(.Created, con.getStatus());
+
+        try con.start();
+
+        try std.testing.expectEqual(.Running, con.getStatus());
+
+        try con.stop();
+
+        try std.testing.expectEqual(.Exited, con.getStatus());
     }
 }
