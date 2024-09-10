@@ -7,7 +7,7 @@ const Image = @import("image.zig").Image;
 const Container = @import("container.zig").Container;
 const Mount = @import("container.zig").Mount;
 
-const nexpodd_path = "/usr/libexec/nexpod/nexpodd";
+const nexpodd_default_path = "/usr/libexec/nexpod/nexpodd";
 
 pub fn createContainer(allocator: std.mem.Allocator, args: struct {
     key: []const u8,
@@ -16,6 +16,7 @@ pub fn createContainer(allocator: std.mem.Allocator, args: struct {
     env: ?std.process.EnvMap = null,
     additional_mounts: []const Mount,
     home_dir: ?[]const u8,
+    nexpodd_path: ?[]const u8 = null,
 }) errors.CreationErrors!Container {
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
@@ -36,7 +37,7 @@ pub fn createContainer(allocator: std.mem.Allocator, args: struct {
 
     var mounts = std.ArrayList(Mount).init(arena_allocator);
     try mounts.appendSlice(args.additional_mounts);
-    collectMounts(&mounts, original_env, home_path) catch |err| switch (err) {
+    collectMounts(&mounts, original_env, args.nexpodd_path, home_path) catch |err| switch (err) {
         error.ServiceNotYetSupported => {
             @panic("Accidentally tried to find a service which isn't yet supported by this library. This is an internal error.");
         },
@@ -203,7 +204,7 @@ test getNamePrimaryGroupAndShellFromPasswd {
     std.testing.allocator.free(shell);
 }
 
-fn collectMounts(mounts: *std.ArrayList(Mount), env: std.process.EnvMap, home_path: []const u8) (error{ InvalidValueInEnvironment, NoRuntimeDirFound, ServiceNotYetSupported } || std.mem.Allocator.Error)!void {
+fn collectMounts(mounts: *std.ArrayList(Mount), env: std.process.EnvMap, nexpodd_path: ?[]const u8, home_path: []const u8) (error{ InvalidValueInEnvironment, NoRuntimeDirFound, ServiceNotYetSupported } || std.mem.Allocator.Error)!void {
     const static_default_mounts = [_]Mount{
         Mount{
             .source = "/etc/resolv.conf",
@@ -499,8 +500,8 @@ fn collectMounts(mounts: *std.ArrayList(Mount), env: std.process.EnvMap, home_pa
 
     // nexpod stuff
     try mounts.*.append(Mount{
-        .source = env.get("NEXPODD_PATH") orelse nexpodd_path,
-        .destination = nexpodd_path,
+        .source = nexpodd_path orelse nexpodd_default_path,
+        .destination = nexpodd_default_path,
         .kind = .{ .bind = .{} },
         .options = .{ .rw = false },
         .propagation = .none,

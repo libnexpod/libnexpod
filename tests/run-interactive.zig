@@ -7,6 +7,10 @@ pub fn main() !void {
         std.log.err("leak detected", .{});
     };
     const allocator = gpa.allocator();
+    var args = try std.process.ArgIterator.initWithAllocator(allocator);
+    defer args.deinit();
+    _ = args.skip();
+    const nexpodd = args.next().?;
 
     const nps = try libnexpod.openNexpodStorage(allocator, "libnexpod-systemtest");
     defer nps.deinit();
@@ -25,6 +29,7 @@ pub fn main() !void {
         var con = try nps.createContainer(.{
             .name = "run-interactive",
             .image = img,
+            .nexpodd_path = nexpodd,
         });
         defer {
             con.delete(true) catch |err| std.log.err("error encountered while deleting container: {s}", .{@errorName(err)});

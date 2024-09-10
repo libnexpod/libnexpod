@@ -66,6 +66,8 @@ pub const NexpodStorage = struct {
     /// you can pass in additional mounts via the `additional_mounts` options if you need to
     /// it uses the current process environment if you don't pass one in manually
     /// it uses the home directory of the current user if you don't specify one manually
+    /// it uses the default path /usr/libexec/nexpod/nexpodd for nexpodd_path
+    /// all paths must be absolute paths
     /// the ownership of all parameters stays with the caller
     pub fn createContainer(self: NexpodStorage, args: struct {
         name: []const u8,
@@ -73,6 +75,7 @@ pub const NexpodStorage = struct {
         additional_mounts: []const Mount = &[_]Mount{},
         home: ?[]const u8 = null,
         image: Image,
+        nexpodd_path: ?[]const u8 = null,
     }) errors.CreationErrors!container.Container {
         return try create.createContainer(self.allocator, .{
             .key = self.key,
@@ -81,6 +84,7 @@ pub const NexpodStorage = struct {
             .env = args.env,
             .additional_mounts = args.additional_mounts,
             .home_dir = args.home,
+            .nexpodd_path = args.nexpodd_path,
         });
     }
 

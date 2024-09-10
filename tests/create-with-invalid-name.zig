@@ -25,6 +25,10 @@ pub fn main() !void {
         std.log.err("leak detected", .{});
     };
     const allocator = gpa.allocator();
+    var args = try std.process.ArgIterator.initWithAllocator(allocator);
+    defer args.deinit();
+    _ = args.skip();
+    const nexpodd = args.next().?;
 
     const nps = try libnexpod.openNexpodStorage(allocator, "libnexpod-systemtest");
     defer nps.deinit();
@@ -43,6 +47,7 @@ pub fn main() !void {
         try std.testing.expectError(libnexpod.errors.PodmanErrors.PodmanFailed, nps.createContainer(.{
             .name = "äß",
             .image = img,
+            .nexpodd_path = nexpodd,
         }));
         try std.testing.expectEqual(3, libnexpod_logs);
     }

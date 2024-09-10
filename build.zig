@@ -123,10 +123,18 @@ pub fn build(b: *std.Build) !void {
     // system tests
     const systemtest_step = b.step("systemtests", "Run system tests");
     test_step.dependOn(systemtest_step);
-    try addSystemTests(b, systemtest_step, "tests", &[_]Module{.{
-        .name = "libnexpod",
-        .module = lib,
-    }}, &target, &optimize, false);
+    try addSystemTests(b, .{
+        .root_case = systemtest_step,
+        .dir_path = "tests",
+        .modules = &[_]Module{.{
+            .name = "libnexpod",
+            .module = lib,
+        }},
+        .target = &target,
+        .optimize = &optimize,
+        .libc = false,
+        .daemon = daemon,
+    });
 
     const docs = b.step("docs", "generate documentation");
     {
@@ -145,34 +153,43 @@ pub fn build(b: *std.Build) !void {
     }
 }
 
-fn addSystemTests(b: *std.Build, root_case: *std.Build.Step, dir_path: []const u8, modules: []const Module, target: *const std.Build.ResolvedTarget, optimize: *const std.builtin.OptimizeMode, libc: bool) !void {
+fn addSystemTests(b: *std.Build, args: struct {
+    root_case: *std.Build.Step,
+    dir_path: []const u8,
+    modules: []const Module,
+    target: *const std.Build.ResolvedTarget,
+    optimize: *const std.builtin.OptimizeMode,
+    libc: bool,
+    daemon: *std.Build.Step.Compile,
+}) !void {
     const setup_step = b.addSystemCommand(&[_][]const u8{
         "tests/setup.sh",
     });
 
-    var dir = try b.build_root.handle.openDir(dir_path, .{ .iterate = true });
+    var dir = try b.build_root.handle.openDir(args.dir_path, .{ .iterate = true });
     defer dir.close();
     var iter = dir.iterate();
     while (try iter.next()) |entry| {
         if (!std.mem.eql(u8, ".zig", std.fs.path.extension(entry.name))) {
             continue;
         }
-        const path = try std.mem.concat(b.allocator, u8, &[_][]const u8{ dir_path, "/", entry.name });
+        const path = try std.mem.concat(b.allocator, u8, &[_][]const u8{ args.dir_path, "/", entry.name });
         const test_case = b.addExecutable(.{
             .name = entry.name,
             .root_source_file = b.path(path),
-            .optimize = optimize.*,
-            .target = target.*,
+            .optimize = args.optimize.*,
+            .target = args.target.*,
         });
-        if (libc) {
+        if (args.libc) {
             test_case.linkLibC();
         }
-        addModules(&test_case.root_module, modules);
+        addModules(&test_case.root_module, args.modules);
 
         test_case.step.dependOn(&setup_step.step);
 
-        const run_test_case = b.addRunArtifact(test_case);
-        root_case.dependOn(&run_test_case.step);
+        var run_test_case = b.addRunArtifact(test_case);
+        run_test_case.addFileArg(args.daemon.getEmittedBin());
+        args.root_case.dependOn(&run_test_case.step);
     }
 }
 

@@ -1,7 +1,7 @@
 const std = @import("std");
 const libnexpod = @import("libnexpod");
 
-fn run(comptime key: []const u8, comptime name: []const u8) !void {
+fn run(comptime key: []const u8, comptime name: []const u8, nexpodd: []const u8) !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer if (gpa.deinit() == .leak) {
         std.log.err("leak detected", .{});
@@ -30,6 +30,7 @@ fn run(comptime key: []const u8, comptime name: []const u8) !void {
         var con = try nps.createContainer(.{
             .name = name,
             .image = img,
+            .nexpodd_path = nexpodd,
         });
         defer {
             con.delete(true) catch |err| std.log.err("error encountered while deleting container: {s}", .{@errorName(err)});
@@ -41,7 +42,11 @@ fn run(comptime key: []const u8, comptime name: []const u8) !void {
 }
 
 pub fn main() !void {
+    var args = try std.process.ArgIterator.initWithAllocator(std.heap.page_allocator);
+    defer args.deinit();
+    _ = args.skip();
+    const nexpodd = args.next().?;
     // while they will have the same name in podman, they don't have according to out key concept
-    try run("libnexpod-systemtest", "create-name-correct");
-    try run("", "libnexpod-systemtest-create-name-correct");
+    try run("libnexpod-systemtest", "create-name-correct", nexpodd);
+    try run("", "libnexpod-systemtest-create-name-correct", nexpodd);
 }
