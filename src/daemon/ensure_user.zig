@@ -1,6 +1,7 @@
 const std = @import("std");
-const log = @import("logging");
 const builtin = @import("builtin");
+const log = @import("logging");
+const utils = @import("utils");
 const get_sudo_group = @import("get_sudo_group.zig").get_sudo_group;
 const structs = @import("structs.zig");
 const Info = structs.Info;
@@ -16,6 +17,7 @@ pub const EnsureUserErrors = std.fmt.AllocPrintError || std.process.Child.RunErr
     UseraddUnexpectedError,
     UsermodFailed,
     UsermodExpectedError,
+    NoShellExists,
 };
 
 pub fn ensure_user(allocator: std.mem.Allocator, info: Info) EnsureUserErrors!void {
@@ -63,13 +65,23 @@ pub fn ensure_user(allocator: std.mem.Allocator, info: Info) EnsureUserErrors!vo
     defer allocator.free(uid);
     var useradd_argv = std.ArrayList([]const u8).init(allocator);
     defer useradd_argv.deinit();
+    const default_shell = "/bin/sh";
+    const shell = result: {
+        if (!utils.fileExists(info.shell)) {
+            break :result info.shell;
+        } else if (utils.fileExists(default_shell)) {
+            break :result default_shell;
+        } else {
+            return error.NoShellExists;
+        }
+    };
     try useradd_argv.appendSlice(&[_][]const u8{
         "useradd",
         "--home-dir",
         info.home,
         "--no-create-home",
         "--shell",
-        info.shell,
+        shell,
         "--uid",
         uid,
         "--gid",

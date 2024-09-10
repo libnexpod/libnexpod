@@ -153,6 +153,7 @@ const SetupErrors = std.fmt.AllocPrintError || std.process.Child.RunError || std
     UsermodFailed,
     UsermodExpectedError,
     XDGRuntimeDirNotSet,
+    NoShellExists,
 };
 
 fn setup(allocator: std.mem.Allocator) SetupErrors!void {
