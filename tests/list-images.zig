@@ -8,7 +8,7 @@ pub fn main() !void {
     };
     const allocator = gpa.allocator();
 
-    var nps = try libnexpod.openNexpodStorage(allocator, "libnexpod-systemtest");
+    var nps = try libnexpod.openLibnexpodStorage(allocator, "libnexpod-systemtest");
     defer nps.deinit();
 
     const images = try nps.getImages();

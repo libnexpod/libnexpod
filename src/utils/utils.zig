@@ -4,8 +4,8 @@ pub fn isInsideContainer() bool {
     return fileExists("/run/.containerenv");
 }
 
-pub fn isInsideNexpodContainer() bool {
-    return fileExists("/run/.nexpodenv");
+pub fn isInsideLibnexpodContainer() bool {
+    return fileExists("/run/.libnexpodenv");
 }
 
 pub fn fileExists(path: []const u8) bool {
@@ -17,7 +17,7 @@ pub fn fileExists(path: []const u8) bool {
 }
 
 test "fileExists" {
-    const path = "/tmp/nexpodtest";
+    const path = "/tmp/libnexpodtest";
     (try std.fs.createFileAbsolute(path, .{})).close();
     defer std.fs.deleteFileAbsolute(path) catch unreachable;
 

@@ -6,7 +6,7 @@ const errors = @import("errors.zig");
 const Mount = @import("container.zig").Mount;
 const Image = @import("image.zig").Image;
 
-const label = "com.github.kilianhanich.nexpod";
+const label = "com.github.libnexpod";
 
 pub fn getContainerJSON(allocator: std.mem.Allocator, id: []const u8) (std.process.Child.RunError || errors.PodmanErrors)![]const u8 {
     const inspect_argv = [_][]const u8{

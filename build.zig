@@ -25,9 +25,9 @@ pub fn build(b: *std.Build) !void {
     });
 
     // create shim only target for building
-    const shim_target = b.step("nexpod-host-shim", "Only the host shim");
+    const shim_target = b.step("libnexpod-host-shim", "Only the host shim");
     const shim = b.addExecutable(.{
-        .name = "nexpod-host-shim",
+        .name = "libnexpod-host-shim",
         .root_source_file = b.path("src/shim/shim.zig"),
         .target = target,
         .optimize = optimize,
@@ -35,7 +35,7 @@ pub fn build(b: *std.Build) !void {
     shim_target.dependOn(&b.addInstallArtifact(shim, .{
         .dest_dir = .{
             .override = .{
-                .custom = "libexec/nexpod/",
+                .custom = "libexec/libnexpod/",
             },
         },
     }).step);
@@ -64,9 +64,9 @@ pub fn build(b: *std.Build) !void {
     addModules(lib, &lib_modules);
 
     // create daemon only target for building
-    const daemon_target = b.step("nexpodd", "Only the daemon");
+    const daemon_target = b.step("libnexpodd", "Only the daemon");
     const daemon = b.addExecutable(.{
-        .name = "nexpodd",
+        .name = "libnexpodd",
         .root_source_file = b.path("src/daemon/daemon.zig"),
         .target = target,
         .optimize = optimize,
@@ -89,7 +89,7 @@ pub fn build(b: *std.Build) !void {
     daemon_target.dependOn(&b.addInstallArtifact(daemon, .{
         .dest_dir = .{
             .override = .{
-                .custom = "libexec/nexpod/",
+                .custom = "libexec/libnexpod/",
             },
         },
     }).step);

@@ -10,13 +10,13 @@ pub fn main() !void {
     var args = try std.process.ArgIterator.initWithAllocator(allocator);
     defer args.deinit();
     _ = args.skip();
-    const nexpodd = args.next().?;
+    const libnexpodd = args.next().?;
 
     const key = "libnexpod-systemtest";
     const name = "host-command";
     const container_name = key ++ "-" ++ name;
 
-    const nps = try libnexpod.openNexpodStorage(allocator, key);
+    const nps = try libnexpod.openLibnexpodStorage(allocator, key);
     defer nps.deinit();
 
     var images = try nps.getImages();
@@ -33,7 +33,7 @@ pub fn main() !void {
         var con = try nps.createContainer(.{
             .name = name,
             .image = img,
-            .nexpodd_path = nexpodd,
+            .libnexpodd_path = libnexpodd,
         });
         defer {
             con.delete(true) catch |err| std.log.err("error encountered while deleting container: {s}", .{@errorName(err)});

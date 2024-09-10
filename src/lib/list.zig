@@ -8,8 +8,8 @@ const images = @import("image.zig");
 const containers = @import("container.zig");
 
 pub fn listImages(allocator: std.mem.Allocator) errors.ListErrors!std.ArrayList(images.Image) {
-    if (utils.isInsideContainer() and !utils.isInsideNexpodContainer()) {
-        return errors.NexpodErrors.InsideNonNexpodContainer;
+    if (utils.isInsideContainer() and !utils.isInsideLibnexpodContainer()) {
+        return errors.LibnexpodErrors.InsideNonLibnexpodContainer;
     }
     const json = try podman.getImageListJSON(allocator);
     defer allocator.free(json);
@@ -81,8 +81,8 @@ pub fn listImages(allocator: std.mem.Allocator) errors.ListErrors!std.ArrayList(
 }
 
 pub fn listContainers(allocator: std.mem.Allocator, key: []const u8) errors.ListErrors!std.ArrayList(containers.Container) {
-    if (utils.isInsideContainer() and !utils.isInsideNexpodContainer()) {
-        return errors.NexpodErrors.InsideNonNexpodContainer;
+    if (utils.isInsideContainer() and !utils.isInsideLibnexpodContainer()) {
+        return errors.LibnexpodErrors.InsideNonLibnexpodContainer;
     }
     const json = try podman.getContainerListJSON(allocator, key);
     defer allocator.free(json);
@@ -149,8 +149,8 @@ const ImageMarshall = struct {
 
 test listImages {
     var image_list = listImages(std.testing.allocator) catch |err| switch (err) {
-        error.InsideNonNexpodContainer => {
-            std.debug.print("inside non-nexpod container, ignoring test\n", .{});
+        error.InsideNonLibnexpodContainer => {
+            std.debug.print("inside non-libnexpod container, ignoring test\n", .{});
             return;
         },
         else => |rest| return rest,
@@ -172,8 +172,8 @@ const ContainerMarshall = struct {
 
 test listContainers {
     var container_list = listContainers(std.testing.allocator, "") catch |err| switch (err) {
-        error.InsideNonNexpodContainer => {
-            std.debug.print("inside non-nexpod container, ignoring test\n", .{});
+        error.InsideNonLibnexpodContainer => {
+            std.debug.print("inside non-libnexpod container, ignoring test\n", .{});
             return;
         },
         else => |rest| return rest,

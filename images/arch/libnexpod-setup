@@ -41,10 +41,10 @@ then
 fi
 
 # clone
-dirname="nexpod-host-shim"
-git clone https://github.com/KilianHanich/arch-nexpod-host-shim-pkg "$dirname"
+dirname="libnexpod-host-shim"
+git clone https://github.com/KilianHanich/arch-libnexpod-host-shim-pkg "$dirname"
 pushd "$dirname"
-git checkout 9bc65ad6e43600cdde3ac8fae9f3220ebf1040cb
+git checkout 5f65c06f9292989542a5c3de98cfaa27b0770b0a
 
 # temporary user because makepkg doesn't want to be run as root
 useradd --create-home builduser
@@ -52,7 +52,7 @@ chown builduser:builduser -R .
 sudo -u builduser makepkg --noconfirm
 
 # install
-pacman --noconfirm -U ./nexpod-host-shim-0.0.0-2-x86_64.pkg.tar.zst
+pacman --noconfirm -U ./libnexpod-host-shim-0.0.0-3-x86_64.pkg.tar.zst
 
 # clean up
 userdel --remove builduser
@@ -78,4 +78,4 @@ fi
 pacman -Scc --noconfirm
 
 # make sudo inside of the container not require a password
-echo "%wheel ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/nexpod
+echo "%wheel ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/libnexpod

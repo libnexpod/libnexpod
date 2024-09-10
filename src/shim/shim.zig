@@ -29,7 +29,7 @@ pub fn main() void {
     defer arena.deinit();
     const stderr = std.io.getStdErr().writer();
     handle(arena.allocator()) catch |err| {
-        stderr.print("nexpod-host-shim: {s}...\n", .{switch (err) {
+        stderr.print("libnexpod-host-shim: {s}...\n", .{switch (err) {
             error.FileNotFound => "flatpak-spawn: command not found",
             error.AccessDenied => "flatpak-spawn: access denied",
             error.ProcessFdQuotaExceeded => "ProcessFdQuotaExceeded",

@@ -11,7 +11,7 @@ pub const Name = struct {
     tag: []const u8,
 };
 
-/// The handle to the available information about a Nexpod image.
+/// The handle to the available information about a libnexpod image.
 /// You must call deinit to free the used resources.
 pub const Image = union(enum) {
     minimal: struct {
@@ -453,7 +453,7 @@ test "makeFromJson small" {
     const env_key = "PATH";
     const env_value = "/usr/bin:/usr/sbin:/bin:/sbin";
     const cmd = "/bin/bash";
-    const label_key = "com.github.kilianhanich.nexpod";
+    const label_key = "com.github.libnexpod";
     const label_value = "true";
     const json =
         \\{"Id": "
@@ -695,7 +695,7 @@ test "makeFromJson missing" {
     const repo_tags = "\"RepoTags\": [\"localhost/image:latest\"]";
     const env = "\"Env\": [\"PATH=/usr/bin:/usr/sbin:/bin:/sbin\"]";
     const cmd = "\"Cmd\": [\"/bin/bash\"]";
-    const labels = "\"Labels\": {\"com.github.kilianhanich.nexpod\":\"true\"}";
+    const labels = "\"Labels\": {\"com.github.libnexpod\":\"true\"}";
     {
         const json =
             \\{

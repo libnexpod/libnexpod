@@ -1,7 +1,7 @@
 const std = @import("std");
 const libnexpod = @import("libnexpod");
 
-fn run(comptime key: []const u8, comptime name: []const u8, nexpodd: []const u8) !void {
+fn run(comptime key: []const u8, comptime name: []const u8, libnexpodd: []const u8) !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer if (gpa.deinit() == .leak) {
         std.log.err("leak detected", .{});
@@ -13,7 +13,7 @@ fn run(comptime key: []const u8, comptime name: []const u8, nexpodd: []const u8)
     else
         key ++ "-" ++ name;
 
-    const nps = try libnexpod.openNexpodStorage(allocator, key);
+    const nps = try libnexpod.openLibnexpodStorage(allocator, key);
     defer nps.deinit();
 
     const images = try nps.getImages();
@@ -30,7 +30,7 @@ fn run(comptime key: []const u8, comptime name: []const u8, nexpodd: []const u8)
         var con = try nps.createContainer(.{
             .name = name,
             .image = img,
-            .nexpodd_path = nexpodd,
+            .libnexpodd_path = libnexpodd,
         });
         defer {
             con.delete(true) catch |err| std.log.err("error encountered while deleting container: {s}", .{@errorName(err)});
@@ -45,8 +45,8 @@ pub fn main() !void {
     var args = try std.process.ArgIterator.initWithAllocator(std.heap.page_allocator);
     defer args.deinit();
     _ = args.skip();
-    const nexpodd = args.next().?;
+    const libnexpodd = args.next().?;
     // while they will have the same name in podman, they don't have according to out key concept
-    try run("libnexpod-systemtest", "create-name-correct", nexpodd);
-    try run("", "libnexpod-systemtest-create-name-correct", nexpodd);
+    try run("libnexpod-systemtest", "create-name-correct", libnexpodd);
+    try run("", "libnexpod-systemtest-create-name-correct", libnexpodd);
 }

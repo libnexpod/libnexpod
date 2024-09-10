@@ -47,5 +47,5 @@ The project has a few library and system dependencies listed here (besides the L
 | Component | Module Dependency | System Dependency |
 | ----- | ----- | ----- |
 | library | [zeit](https://github.com/rockorager/zeit) | [podman](https://podman.io) |
-| nexpodd | [zig-clap](https://github.com/Hejsil/zig-clap) | groupadd<br>useradd<br>usermod |
-| host-shim | | flatpak-spawn |
+| libnexpodd | [zig-clap](https://github.com/Hejsil/zig-clap) | groupadd<br>useradd<br>usermod |
+| libnexpod-host-shim | | flatpak-spawn |

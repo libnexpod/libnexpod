@@ -1,8 +1,8 @@
 const std = @import("std");
 
 /// all errors emitted related to errors of this library
-pub const NexpodErrors = error{
-    InsideNonNexpodContainer,
+pub const LibnexpodErrors = error{
+    InsideNonLibnexpodContainer,
 };
 
 /// all errors emitted related to errors of podman
@@ -27,7 +27,7 @@ pub const CreationErrors = std.mem.Allocator.Error || std.fmt.ParseIntError || s
 };
 
 /// all errors which can happen while listing out containers of images
-pub const ListErrors = NexpodErrors || PodmanErrors || std.json.ParseFromValueError || std.json.Scanner.AllocError || std.json.Scanner.NextError || std.process.Child.RunError;
+pub const ListErrors = LibnexpodErrors || PodmanErrors || std.json.ParseFromValueError || std.json.Scanner.AllocError || std.json.Scanner.NextError || std.process.Child.RunError;
 
 /// all images which can happen when update the info of a container
 pub const UpdateErrors = std.json.ParseError(std.json.Scanner) || std.process.Child.RunError || PodmanErrors || std.mem.Allocator.Error;
@@ -40,5 +40,5 @@ pub const RunCommandErrors = std.mem.Allocator.Error || std.process.Child.SpawnE
     EndOfStream,
 };
 
-/// all errors which can happen when opening NexpodStorage
+/// all errors which can happen when opening LibnexpodStorage
 pub const InitStorageErrors = PodmanErrors || error{ OutOfMemory, SystemResources, AccessDenied, InvalidExe, FileBusy, ProcessFdQuotaExceeded, SystemFdQuotaExceeded, ResourceLimitReached, InvalidUserId, FileSystem, SymLinkLoop, NameTooLong, Unexpected };

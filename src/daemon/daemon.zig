@@ -319,11 +319,11 @@ fn updatedb(allocator: std.mem.Allocator) void {
     handle.detach();
 }
 
-fn create_nexpod_files(allocator: std.mem.Allocator, uid: std.posix.uid_t, primary_gid: std.posix.gid_t) (std.process.GetEnvMapError || std.posix.MakeDirError || std.fs.File.OpenError || std.fs.Dir.ChownError || error{ OutOfMemory, XDGRuntimeDirNotSet })!struct { std.process.EnvMap, std.fs.Dir } {
+fn create_libnexpod_files(allocator: std.mem.Allocator, uid: std.posix.uid_t, primary_gid: std.posix.gid_t) (std.process.GetEnvMapError || std.posix.MakeDirError || std.fs.File.OpenError || std.fs.Dir.ChownError || error{ OutOfMemory, XDGRuntimeDirNotSet })!struct { std.process.EnvMap, std.fs.Dir } {
     var env = try std.process.getEnvMap(allocator);
     errdefer env.deinit();
-    const dir_name = "nexpod";
-    const nexpod_dir = val: {
+    const dir_name = "libnexpod";
+    const libnexpod_dir = val: {
         if (uid == 0) {
             break :val try std.mem.concat(allocator, u8, &[_][]const u8{ "/run/", dir_name });
         } else {
@@ -334,14 +334,14 @@ fn create_nexpod_files(allocator: std.mem.Allocator, uid: std.posix.uid_t, prima
             }
         }
     };
-    defer allocator.free(nexpod_dir);
-    if (!utils.fileExists(nexpod_dir)) {
-        try std.fs.makeDirAbsolute(nexpod_dir);
+    defer allocator.free(libnexpod_dir);
+    if (!utils.fileExists(libnexpod_dir)) {
+        try std.fs.makeDirAbsolute(libnexpod_dir);
     }
-    var dir = try std.fs.openDirAbsolute(nexpod_dir, .{ .iterate = true });
+    var dir = try std.fs.openDirAbsolute(libnexpod_dir, .{ .iterate = true });
     errdefer dir.close();
     try dir.chown(uid, primary_gid);
-    (try std.fs.createFileAbsolute("/run/.nexpodenv", .{})).close();
+    (try std.fs.createFileAbsolute("/run/.libnexpodenv", .{})).close();
     return .{
         env,
         dir,
@@ -349,7 +349,7 @@ fn create_nexpod_files(allocator: std.mem.Allocator, uid: std.posix.uid_t, prima
 }
 
 fn host_integration(allocator: std.mem.Allocator, info: Info) (error{ OutOfMemory, XDGRuntimeDirNotSet } || std.fs.File.OpenError || std.fs.File.WriteError || std.process.GetEnvMapError || std.posix.MakeDirError || std.fs.Dir.ChownError)!void {
-    var env: std.process.EnvMap, var runtime_dir: std.fs.Dir = try create_nexpod_files(allocator, info.uid, info.group.items[0].gid);
+    var env: std.process.EnvMap, var runtime_dir: std.fs.Dir = try create_libnexpod_files(allocator, info.uid, info.group.items[0].gid);
     defer env.deinit();
     defer runtime_dir.close();
     try nvidia(allocator, runtime_dir);
@@ -358,12 +358,12 @@ fn host_integration(allocator: std.mem.Allocator, info: Info) (error{ OutOfMemor
     if (utils.fileExists(rpm_dir)) {
         log.info("configuring RPM to ignore bind mounts", .{});
         const file_contents =
-            \\# Written by nexpodd\n
+            \\# Written by libnexpodd\n
             \\# https://github.com/KilianHanich/libnexpod\n
             \\\n
             \\%%_netsharedpath /dev:/media:/mnt:/proc:/sys:/tmp:/var/lib/flatpak:/var/lib/libvirt\n
         ;
-        var file = try std.fs.openFileAbsolute(rpm_dir ++ "/macros.nexpod", .{ .mode = .write_only });
+        var file = try std.fs.openFileAbsolute(rpm_dir ++ "/macros.libnexpod", .{ .mode = .write_only });
         defer file.close();
         try file.writeAll(file_contents);
     }

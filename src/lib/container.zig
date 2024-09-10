@@ -73,7 +73,7 @@ pub const ContainerConfig = struct {
     umask: std.posix.mode_t,
 };
 
-/// The handle to a NexpodContainer with either minimal or full information amount.
+/// The handle to a libnexpod container with either minimal or full information amount.
 /// You must call deinit to free the used resources.
 pub const Container = union(enum) {
     minimal: struct {
@@ -726,7 +726,7 @@ test "copy" {
         },
     };
     var cmd = [_][]const u8{
-        "/usr/libexec/nexpod/nexpodd",
+        "/usr/libexec/libnexpod/libnexpodd",
         "--uid",
         "1000",
     };
@@ -813,7 +813,7 @@ test "copy" {
 
 test "makeFromJson" {
     // this is so far from a toolbx container but with stuff removed because of privacy and size reasons
-    // TODO: swap with a nexpod container
+    // TODO: swap with a libnexpod container
     const id = "1b2001551d16322e8d6b6833548a41dde83b488557deeca44a821ba78fe01656";
     const created = try zeit.instant(.{
         .source = .{
