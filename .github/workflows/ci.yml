@@ -1,0 +1,15 @@
+name: "CI"
+on:
+  pull_request_target:
+    branches:
+      - "main"
+
+jobs:
+  arch:
+    runs-on: ubuntu-latest
+    name: "arch image test"
+    - uses: actions/checkout@v4
+    - uses: ./.github/workflows/ci-run-template.yml
+      with:
+        image_tag: latest
+        image_name: arch

@@ -162,9 +162,14 @@ fn addSystemTests(b: *std.Build, args: struct {
     libc: bool,
     daemon: *std.Build.Step.Compile,
 }) !void {
-    const setup_step = b.addSystemCommand(&[_][]const u8{
-        "tests/setup.sh",
+    const setup_check_build = b.addExecutable(.{
+        .name = "setup_check",
+        .root_source_file = b.path("tests/list-images.zig"),
+        .target = b.host,
+        .optimize = .ReleaseSafe,
     });
+    addModules(&setup_check_build.root_module, args.modules);
+    const setup_check = b.addRunArtifact(setup_check_build);
 
     var dir = try b.build_root.handle.openDir(args.dir_path, .{ .iterate = true });
     defer dir.close();
@@ -185,7 +190,7 @@ fn addSystemTests(b: *std.Build, args: struct {
         }
         addModules(&test_case.root_module, args.modules);
 
-        test_case.step.dependOn(&setup_step.step);
+        test_case.step.dependOn(&setup_check.step);
 
         var run_test_case = b.addRunArtifact(test_case);
         run_test_case.addFileArg(args.daemon.getEmittedBin());
