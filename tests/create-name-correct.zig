@@ -46,7 +46,7 @@ pub fn main() !void {
     defer args.deinit();
     _ = args.skip();
     const libnexpodd = args.next().?;
-    // while they will have the same name in podman, they don't have according to out key concept
+    // while they will have the same name in podman, they don't have according to our key concept
     try run("libnexpod-systemtest", "create-name-correct", libnexpodd);
     try run("", "libnexpod-systemtest-create-name-correct", libnexpodd);
 }

@@ -18,19 +18,42 @@ pub fn build(b: *std.Build) !void {
         .target = target,
         .optimize = optimize,
     });
+
     const utils_module = b.addModule("utils", .{
         .root_source_file = b.path("src/utils/utils.zig"),
         .target = target,
         .optimize = optimize,
     });
 
+    const shim_module = b.createModule(.{
+        .root_source_file = b.path("src/shim/shim.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    const lib = b.addModule("libnexpod", .{
+        .root_source_file = b.path("src/lib/lib.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    lib.addImport("logging", log_module);
+    lib.addImport("utils", utils_module);
+    lib.addImport("zeit", zeit.module("zeit"));
+
+    const daemon_module = b.createModule(.{
+        .root_source_file = b.path("src/daemon/daemon.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    daemon_module.addImport("clap", clap.module("clap"));
+    daemon_module.addImport("logging", log_module);
+    daemon_module.addImport("utils", utils_module);
+
     // create shim only target for building
     const shim_target = b.step("libnexpod-host-shim", "Only the host shim");
     const shim = b.addExecutable(.{
         .name = "libnexpod-host-shim",
-        .root_source_file = b.path("src/shim/shim.zig"),
-        .target = target,
-        .optimize = optimize,
+        .root_module = shim_module,
     });
     shim_target.dependOn(&b.addInstallArtifact(shim, .{
         .dest_dir = .{
@@ -41,51 +64,12 @@ pub fn build(b: *std.Build) !void {
     }).step);
     b.getInstallStep().dependOn(shim_target);
 
-    // create lib only target for building
-    const lib = b.addModule("libnexpod", .{
-        .root_source_file = b.path("src/lib/lib.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-    const lib_modules = [_]Module{
-        .{
-            .name = "logging",
-            .module = log_module,
-        },
-        .{
-            .name = "utils",
-            .module = utils_module,
-        },
-        .{
-            .name = "zeit",
-            .module = zeit.module("zeit"),
-        },
-    };
-    addModules(lib, &lib_modules);
-
     // create daemon only target for building
     const daemon_target = b.step("libnexpodd", "Only the daemon");
     const daemon = b.addExecutable(.{
         .name = "libnexpodd",
-        .root_source_file = b.path("src/daemon/daemon.zig"),
-        .target = target,
-        .optimize = optimize,
+        .root_module = daemon_module,
     });
-    const daemon_modules = [_]Module{
-        .{
-            .name = "clap",
-            .module = clap.module("clap"),
-        },
-        .{
-            .name = "logging",
-            .module = log_module,
-        },
-        .{
-            .name = "utils",
-            .module = utils_module,
-        },
-    };
-    addModules(daemon.root_module, &daemon_modules);
     daemon_target.dependOn(&b.addInstallArtifact(daemon, .{
         .dest_dir = .{
             .override = .{
@@ -101,28 +85,48 @@ pub fn build(b: *std.Build) !void {
     // unit tests
     const unittest_step = b.step("unittests", "Run unit tests");
     test_step.dependOn(unittest_step);
+    // base modules
+    unittest_step.dependOn(&b.addTest(.{
+        .name = "logging",
+        .root_module = log_module,
+    }).step);
+    unittest_step.dependOn(&b.addTest(.{
+        .name = "utils",
+        .root_module = utils_module,
+    }).step);
 
-    // for the utils
-    try addTestCases(b, test_step, "src/utils", &[_]Module{}, &target, &optimize, true);
+    // shim
+    const shim_unit_tests = b.addTest(.{
+        .name = "shim",
+        .root_module = shim_module,
+    });
+    const shim_unit_test_step = b.step("shimunittests", "Run only the unit tests of the shim");
+    shim_unit_test_step.dependOn(&shim_unit_tests.step);
+    unittest_step.dependOn(shim_unit_test_step);
 
     // for lib
-    const lib_unit_tests = b.step("libunittests", "Run only the unit tests for the library");
-    try addTestCases(b, lib_unit_tests, "src/lib", &lib_modules, &target, &optimize, true);
-    unittest_step.dependOn(lib_unit_tests);
-
-    // for shim
-    const shim_unit_tests = b.step("shimunittests", "Run only the unit tests of the shim");
-    try addTestCases(b, shim_unit_tests, "src/shim", &[_]Module{}, &target, &optimize, false);
-    unittest_step.dependOn(shim_unit_tests);
+    const lib_unit_tests = b.addTest(.{
+        .name = "lib",
+        .root_module = lib,
+    });
+    lib_unit_tests.linkLibC();
+    const lib_unit_test_step = b.step("libunittests", "Run only the unit tests for the library");
+    lib_unit_test_step.dependOn(&lib_unit_tests.step);
+    unittest_step.dependOn(lib_unit_test_step);
 
     // for daemon
-    const daemon_unit_tests = b.step("daemonunittests", "Run only the unit tests of the daemon");
-    try addTestCases(b, daemon_unit_tests, "src/daemon", &daemon_modules, &target, &optimize, false);
-    unittest_step.dependOn(daemon_unit_tests);
+    const daemon_unit_tests = b.addTest(.{
+        .name = "daemon",
+        .root_module = daemon_module,
+    });
+    const daemon_unit_test_step = b.step("daemonunittests", "Run only the unit tests of the daemon");
+    daemon_unit_test_step.dependOn(&daemon_unit_tests.step);
+    unittest_step.dependOn(daemon_unit_test_step);
 
     // system tests
     const systemtest_step = b.step("systemtests", "Run system tests");
     test_step.dependOn(systemtest_step);
+
     try addSystemTests(b, .{
         .root_case = systemtest_step,
         .dir_path = "tests",
@@ -130,9 +134,6 @@ pub fn build(b: *std.Build) !void {
             .name = "libnexpod",
             .module = lib,
         }},
-        .target = &target,
-        .optimize = &optimize,
-        .libc = false,
         .daemon = daemon,
     });
 
@@ -157,16 +158,15 @@ fn addSystemTests(b: *std.Build, args: struct {
     root_case: *std.Build.Step,
     dir_path: []const u8,
     modules: []const Module,
-    target: *const std.Build.ResolvedTarget,
-    optimize: *const std.builtin.OptimizeMode,
-    libc: bool,
     daemon: *std.Build.Step.Compile,
 }) !void {
     const setup_check_build = b.addExecutable(.{
         .name = "setup_check",
-        .root_source_file = b.path("tests/list-images.zig"),
-        .target = b.graph.host,
-        .optimize = .ReleaseSafe,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tests/list-images.zig"),
+            .target = b.graph.host,
+            .optimize = .ReleaseSafe,
+        }),
     });
     addModules(setup_check_build.root_module, args.modules);
     const setup_check = b.addRunArtifact(setup_check_build);
@@ -185,12 +185,9 @@ fn addSystemTests(b: *std.Build, args: struct {
         const test_case = b.addExecutable(.{
             .name = name,
             .root_source_file = b.path(path),
-            .optimize = args.optimize.*,
-            .target = args.target.*,
+            .optimize = .Debug,
+            .target = b.graph.host,
         });
-        if (args.libc) {
-            test_case.linkLibC();
-        }
         args.root_case.dependOn(&b.addInstallArtifact(test_case, .{
             .dest_dir = .{
                 .override = .{
@@ -205,29 +202,6 @@ fn addSystemTests(b: *std.Build, args: struct {
         var run_test_case = b.addRunArtifact(test_case);
         run_test_case.addFileArg(args.daemon.getEmittedBin());
         args.root_case.dependOn(&run_test_case.step);
-    }
-}
-
-fn addTestCases(b: *std.Build, root_case: *std.Build.Step, dir_path: []const u8, modules: []const Module, target: *const std.Build.ResolvedTarget, optimize: *const std.builtin.OptimizeMode, libc: bool) !void {
-    var dir = try b.build_root.handle.openDir(dir_path, .{ .iterate = true });
-    defer dir.close();
-    var iter = dir.iterate();
-    while (try iter.next()) |entry| {
-        if (!std.mem.eql(u8, ".zig", std.fs.path.extension(entry.name))) {
-            continue;
-        }
-        const path = try std.mem.concat(b.allocator, u8, &[_][]const u8{ dir_path, "/", entry.name });
-        const test_case = b.addTest(.{
-            .root_source_file = b.path(path),
-            .target = target.*,
-            .optimize = optimize.*,
-        });
-        if (libc) {
-            test_case.linkLibC();
-        }
-        addModules(test_case.root_module, modules);
-        const run_test_case = b.addRunArtifact(test_case);
-        root_case.dependOn(&run_test_case.step);
     }
 }
 
