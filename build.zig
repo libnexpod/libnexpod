@@ -85,6 +85,15 @@ pub fn build(b: *std.Build) !void {
     // unit tests
     const unittest_step = b.step("unittests", "Run unit tests");
     test_step.dependOn(unittest_step);
+    // base modules
+    unittest_step.dependOn(&b.addTest(.{
+        .name = "logging",
+        .root_module = log_module,
+    }).step);
+    unittest_step.dependOn(&b.addTest(.{
+        .name = "utils",
+        .root_module = utils_module,
+    }).step);
 
     // shim
     const shim_unit_tests = b.addTest(.{
