@@ -1,7 +1,7 @@
 const std = @import("std");
 const libnexpod = @import("libnexpod");
 
-pub const std_options = .{
+pub const std_options: std.Options = .{
     .logFn = logFilter,
 };
 

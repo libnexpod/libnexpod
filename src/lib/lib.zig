@@ -115,6 +115,10 @@ pub fn openLibnexpodStorage(allocator: std.mem.Allocator, key: []const u8) error
         error.InvalidWtf8,
         // WASI-Only
         error.InvalidUtf8,
+        // not possible from spawn (currently) %TODO: reassess after next Zig update
+        error.ProcessAlreadyExec,
+        error.ProcessNotFound,
+        error.InvalidProcessGroupId,
         => unreachable,
         // we go via env variables, not paths
         error.NoDevice, error.IsDir, error.NotDir, error.BadPathName => unreachable,
@@ -134,6 +138,8 @@ pub fn openLibnexpodStorage(allocator: std.mem.Allocator, key: []const u8) error
             error.InputOutput,
             error.OperationAborted,
             error.FileTooBig,
+            error.LockViolation,
+            error.ProcessNotFound,
             => unreachable,
             else => |rest| return rest,
         };
@@ -151,10 +157,31 @@ pub fn openLibnexpodStorage(allocator: std.mem.Allocator, key: []const u8) error
         error.InvalidWtf8,
         // WASI-Only
         error.InvalidUtf8,
+        // not possible from spawn (currently) %TODO: reassess after next Zig update
+        error.ProcessAlreadyExec,
+        error.ProcessNotFound,
+        error.InvalidProcessGroupId,
         => unreachable,
         // we go via env variables, not paths
-        error.OutOfMemory, error.NoDevice, error.IsDir, error.NotDir, error.BadPathName => unreachable,
-        error.SystemResources, error.AccessDenied, error.InvalidExe, error.FileBusy, error.ProcessFdQuotaExceeded, error.SystemFdQuotaExceeded, error.ResourceLimitReached, error.InvalidUserId, error.FileSystem, error.SymLinkLoop, error.NameTooLong, error.Unexpected => |rest| return rest,
+        error.OutOfMemory,
+        error.NoDevice,
+        error.IsDir,
+        error.NotDir,
+        error.BadPathName,
+        => unreachable,
+        error.SystemResources,
+        error.AccessDenied,
+        error.InvalidExe,
+        error.FileBusy,
+        error.ProcessFdQuotaExceeded,
+        error.SystemFdQuotaExceeded,
+        error.ResourceLimitReached,
+        error.InvalidUserId,
+        error.FileSystem,
+        error.SymLinkLoop,
+        error.NameTooLong,
+        error.Unexpected,
+        => |rest| return rest,
         // Podman not found
         error.PermissionDenied, error.FileNotFound => return errors.PodmanErrors.PodmanNotFound,
     };

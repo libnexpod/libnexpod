@@ -85,7 +85,7 @@ pub fn build(b: *std.Build) !void {
             .module = utils_module,
         },
     };
-    addModules(&daemon.root_module, &daemon_modules);
+    addModules(daemon.root_module, &daemon_modules);
     daemon_target.dependOn(&b.addInstallArtifact(daemon, .{
         .dest_dir = .{
             .override = .{
@@ -165,22 +165,25 @@ fn addSystemTests(b: *std.Build, args: struct {
     const setup_check_build = b.addExecutable(.{
         .name = "setup_check",
         .root_source_file = b.path("tests/list-images.zig"),
-        .target = b.host,
+        .target = b.graph.host,
         .optimize = .ReleaseSafe,
     });
-    addModules(&setup_check_build.root_module, args.modules);
+    addModules(setup_check_build.root_module, args.modules);
     const setup_check = b.addRunArtifact(setup_check_build);
 
     var dir = try b.build_root.handle.openDir(args.dir_path, .{ .iterate = true });
     defer dir.close();
     var iter = dir.iterate();
     while (try iter.next()) |entry| {
-        if (!std.mem.eql(u8, ".zig", std.fs.path.extension(entry.name))) {
+        const lastDotIndex = std.mem.lastIndexOfScalar(u8, entry.name, '.') orelse continue;
+        if (lastDotIndex == 0) continue;
+        if (!std.mem.eql(u8, ".zig", entry.name[lastDotIndex..])) {
             continue;
         }
         const path = try std.mem.concat(b.allocator, u8, &[_][]const u8{ args.dir_path, "/", entry.name });
+        const name = try std.mem.concat(b.allocator, u8, &[_][]const u8{ "system-test-", entry.name[0..lastDotIndex] });
         const test_case = b.addExecutable(.{
-            .name = entry.name,
+            .name = name,
             .root_source_file = b.path(path),
             .optimize = args.optimize.*,
             .target = args.target.*,
@@ -188,7 +191,14 @@ fn addSystemTests(b: *std.Build, args: struct {
         if (args.libc) {
             test_case.linkLibC();
         }
-        addModules(&test_case.root_module, args.modules);
+        args.root_case.dependOn(&b.addInstallArtifact(test_case, .{
+            .dest_dir = .{
+                .override = .{
+                    .custom = "system-tests",
+                },
+            },
+        }).step);
+        addModules(test_case.root_module, args.modules);
 
         test_case.step.dependOn(&setup_check.step);
 
@@ -215,7 +225,7 @@ fn addTestCases(b: *std.Build, root_case: *std.Build.Step, dir_path: []const u8,
         if (libc) {
             test_case.linkLibC();
         }
-        addModules(&test_case.root_module, modules);
+        addModules(test_case.root_module, modules);
         const run_test_case = b.addRunArtifact(test_case);
         root_case.dependOn(&run_test_case.step);
     }

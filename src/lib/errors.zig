@@ -41,4 +41,19 @@ pub const RunCommandErrors = std.mem.Allocator.Error || std.process.Child.SpawnE
 };
 
 /// all errors which can happen when opening LibnexpodStorage
-pub const InitStorageErrors = PodmanErrors || error{ OutOfMemory, SystemResources, AccessDenied, InvalidExe, FileBusy, ProcessFdQuotaExceeded, SystemFdQuotaExceeded, ResourceLimitReached, InvalidUserId, FileSystem, SymLinkLoop, NameTooLong, Unexpected };
+pub const InitStorageErrors = PodmanErrors || error{
+    OutOfMemory,
+    SystemResources,
+    AccessDenied,
+    InvalidExe,
+    FileBusy,
+    ProcessFdQuotaExceeded,
+    SystemFdQuotaExceeded,
+    ResourceLimitReached,
+    InvalidUserId,
+    FileSystem,
+    SymLinkLoop,
+    NameTooLong,
+    Unexpected,
+    Canceled,
+};

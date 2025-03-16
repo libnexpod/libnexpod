@@ -57,11 +57,11 @@ pub fn main() !void {
 
         const max_bytes = std.math.pow(usize, 2, 32);
 
-        var stdout = std.ArrayList(u8).init(allocator);
-        defer stdout.deinit();
-        var stderr = std.ArrayList(u8).init(allocator);
-        defer stderr.deinit();
-        try process.collectOutput(&stdout, &stderr, max_bytes);
+        var stdout = std.ArrayListUnmanaged(u8).empty;
+        defer stdout.deinit(allocator);
+        var stderr = std.ArrayListUnmanaged(u8).empty;
+        defer stderr.deinit(allocator);
+        try process.collectOutput(allocator, &stdout, &stderr, max_bytes);
 
         std.log.debug("whoami output: {s}", .{stdout.items});
 
