@@ -28,11 +28,11 @@ fn checkOne(allocator: std.mem.Allocator, path: []const u8, con: *libnexpod.Cont
         allocator.free(argv);
     }
 
-    var stdout = std.ArrayList(u8).init(allocator);
-    defer stdout.deinit();
-    var stderr = std.ArrayList(u8).init(allocator);
-    defer stderr.deinit();
-    try process.collectOutput(&stdout, &stderr, max_bytes);
+    var stdout = std.ArrayListUnmanaged(u8).empty;
+    defer stdout.deinit(allocator);
+    var stderr = std.ArrayListUnmanaged(u8).empty;
+    defer stderr.deinit(allocator);
+    try process.collectOutput(allocator, &stdout, &stderr, max_bytes);
 
     _ = try process.wait();
 

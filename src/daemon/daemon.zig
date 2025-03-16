@@ -67,11 +67,11 @@ fn loop(allocator: std.mem.Allocator) LoopErrors!void {
     defer std.posix.close(signalfd);
 
     // setup a timerfd to with a daily loop
-    const timerfd = try std.posix.timerfd_create(std.posix.CLOCK.MONOTONIC, std.os.linux.TFD{ .CLOEXEC = true });
+    const timerfd = try std.posix.timerfd_create(std.os.linux.timerfd_clockid_t.MONOTONIC, std.os.linux.TFD{ .CLOEXEC = true });
     defer std.posix.close(timerfd);
     const day = std.posix.timespec{
-        .tv_sec = 1 * std.time.s_per_day,
-        .tv_nsec = 0,
+        .sec = 1 * std.time.s_per_day,
+        .nsec = 0,
     };
     try std.posix.timerfd_settime(timerfd, std.os.linux.TFD.TIMER{}, &std.os.linux.itimerspec{ .it_interval = day, .it_value = day }, null);
 
@@ -140,23 +140,7 @@ fn loop(allocator: std.mem.Allocator) LoopErrors!void {
     }
 }
 
-const SetupErrors = std.fmt.AllocPrintError || std.process.Child.RunError || std.process.GetEnvMapError || std.fs.File.OpenError || std.fs.File.ReadError || std.fs.File.WriteError || std.posix.MakeDirError || std.fs.Dir.ChownError || error{
-    OutOfMemory,
-    InvalidUsage,
-    MissingParameter,
-    GroupaddFailed,
-    GroupaddUnexpectedError,
-    NoSudoGroupFound,
-    GroupFileProblem,
-    UseraddFailed,
-    UseraddUnexpectedError,
-    UsermodFailed,
-    UsermodExpectedError,
-    XDGRuntimeDirNotSet,
-    NoShellExists,
-};
-
-fn setup(allocator: std.mem.Allocator) SetupErrors!void {
+fn setup(allocator: std.mem.Allocator) !void {
     const params = [_]clap.Param(clap.Help){
         .{
             .id = .{
@@ -264,7 +248,7 @@ fn setup(allocator: std.mem.Allocator) SetupErrors!void {
     defer info.group.deinit();
     inline for (std.meta.fields(Info)) |field| {
         const element = @field(result.args, field.name);
-        if (@typeInfo(@TypeOf(element)) == .Int) {
+        if (@typeInfo(@TypeOf(element)) == .int) {
             @field(info, field.name) = element > 0;
         } else if (comptime std.mem.eql(u8, "group", field.name)) {
             if (result.args.group.len == 0) {

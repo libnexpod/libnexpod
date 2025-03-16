@@ -463,23 +463,23 @@ test "makeFromJson small" {
         \\", "RepoTags": ["
     ++ repo_tag.repo ++ "/" ++ repo_tag.name ++ ":" ++ repo_tag.tag ++
         \\"],
-        ++
+    ++
         \\"Config": {"Env": ["
     ++ env_key ++
         \\=
     ++ env_value ++
         \\"],
-        ++
+    ++
         \\"Cmd": ["
     ++ cmd ++
         \\"],
-        ++
+    ++
         \\"Labels": {"
     ++ label_key ++
         \\": "
     ++ label_value ++
         \\"}
-        ++
+    ++
         \\}}
     ;
     const parsed = try std.json.parseFromSlice(Image, std.testing.allocator, json, .{});

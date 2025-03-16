@@ -521,7 +521,7 @@ pub const Container = union(enum) {
                 inline for (comptime std.meta.declarations(std.posix.SIG)) |field| {
                     const value = @field(std.posix.SIG, field.name);
                     const type_info = @typeInfo(@TypeOf(value));
-                    if (type_info == .Int or type_info == .ComptimeInt) {
+                    if (type_info == .int or type_info == .comptime_int) {
                         if (std.mem.eql(u8, "SIG" ++ field.name, parsed.Config.StopSignal.string)) {
                             break :val value;
                         }

@@ -99,8 +99,9 @@ pub fn ensure_user(allocator: std.mem.Allocator, info: Info) EnsureUserErrors!vo
                 }
                 try std.fmt.format(group_list.writer(), ",{s}", .{group.name});
             }
-            try useradd_argv.append(group_list.items);
-            break :val try group_list.toOwnedSlice();
+            const e = try group_list.toOwnedSlice();
+            try useradd_argv.append(e);
+            break :val e;
         } else {
             break :val null;
         }
@@ -368,7 +369,7 @@ fn check_useradd_command(info: Info, command: []const []const u8) !void {
             }
             for (visited, 0..) |v, j| {
                 if (!v) {
-                    std.debug.print("missing group: {s}\n", .{if (j != 0) info.group.items[j].name else sudo_group});
+                    std.log.err("missing group: {s}\n", .{if (j != 0) info.group.items[j].name else sudo_group});
                     return error.UseraddMissingGroup;
                 }
             }
@@ -492,7 +493,7 @@ fn check_usermod_command(info: Info, command: []const []const u8) !void {
             }
             for (visited, 0..) |v, j| {
                 if (!v) {
-                    std.debug.print("missing group: {s}\n", .{if (j != 0) info.group.items[j].name else sudo_group});
+                    std.log.err("missing group: {s}\n", .{if (j != 0) info.group.items[j].name else sudo_group});
                     return error.UseraddMissingGroup;
                 }
             }
