@@ -37,9 +37,6 @@ pub const LibnexpodStorage = struct {
             }
             nps.allocator.free(image_list);
         }
-        for (image_list) |*img| {
-            try img.makeFull();
-        }
     }
 
     pub fn getImage(self: LibnexpodStorage, id: []const u8) errors.ListErrors!Image {
@@ -58,11 +55,11 @@ pub const LibnexpodStorage = struct {
             nps.allocator.free(image_list);
         }
 
-        const id = image_list[0].getId();
+        const id = image_list[0].id;
         const img = try nps.getImage(if (image_list.len > 0) id else return);
         defer img.deinit();
 
-        try std.testing.expectEqualStrings(id, img.getId());
+        try std.testing.expectEqualStrings(id, img.id);
     }
 
     /// creates a list of all currently existing libnexpod containers with the current key in minimal form

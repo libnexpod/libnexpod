@@ -44,38 +44,6 @@ test "getContainerListJSON leaktest" {
     std.testing.allocator.free(try getContainerListJSON(std.testing.allocator, ""));
 }
 
-pub fn getImageJSON(allocator: std.mem.Allocator, id: []const u8) (std.process.Child.RunError || errors.PodmanErrors)![]const u8 {
-    const inspect_argv = [_][]const u8{
-        "podman",
-        "image",
-        "inspect",
-        "--format",
-        "{{ json . }}",
-        id,
-    };
-    const result = try call(allocator, &inspect_argv);
-    log.debug("getImageJSON received the following from podman: {s}", .{result});
-    return result;
-}
-
-pub fn getImageListJSON(allocator: std.mem.Allocator) (std.process.Child.RunError || errors.PodmanErrors)![]const u8 {
-    const get_argv = [_][]const u8{
-        "podman",
-        "images",
-        "--format",
-        "json",
-        "--filter",
-        "label=" ++ label,
-    };
-    const result = try call(allocator, &get_argv);
-    log.debug("getImageListJSON received the following from podman: {s}", .{result});
-    return result;
-}
-
-test "getImageListJSON leaktest" {
-    std.testing.allocator.free(try getImageListJSON(std.testing.allocator));
-}
-
 pub fn call(allocator: std.mem.Allocator, argv: []const []const u8) (std.process.Child.RunError || errors.PodmanErrors)![]const u8 {
     const result = std.process.Child.run(.{
         .allocator = allocator,
@@ -244,7 +212,7 @@ pub fn createContainer(args: struct {
         labels.items,
         mounts.items,
         &[_][]const u8{
-            args.image.getId(),
+            args.image.id,
         },
         args.entrypoint_argv,
     });
@@ -287,13 +255,10 @@ test createContainer {
     try env.put("XDG_RUNTIME_DIR", "/run/hi");
     const expected_env = try std.mem.concat(helper_allocator, u8, (try createEnvironmentArgs(helper_allocator, env)).items);
 
-    const image = Image{
-        .minimal = .{
-            .allocator = undefined,
-            .id = "hello",
-            .created = undefined,
-            .names = undefined,
-        },
+    const image = b: {
+        var img: Image = undefined;
+        img.id = "hello";
+        break :b img;
     };
 
     const entrypoint_argv = [_][]const u8{
@@ -315,7 +280,7 @@ test createContainer {
         expected_env,
         expected_labels,
         expected_mounts,
-        image.minimal.id,
+        image.id,
         expected_entry,
     });
 

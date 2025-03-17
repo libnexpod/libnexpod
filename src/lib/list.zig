@@ -7,79 +7,6 @@ const podman = @import("podman.zig");
 const images = @import("image.zig");
 const containers = @import("container.zig");
 
-pub fn listImages(allocator: std.mem.Allocator) errors.ListErrors!std.ArrayList(images.Image) {
-    if (utils.isInsideContainer() and !utils.isInsideLibnexpodContainer()) {
-        return errors.LibnexpodErrors.InsideNonLibnexpodContainer;
-    }
-    const json = try podman.getImageListJSON(allocator);
-    defer allocator.free(json);
-
-    var parsed = try std.json.parseFromSlice([]ImageMarshall, allocator, json, .{ .ignore_unknown_fields = true });
-    defer parsed.deinit();
-
-    var image_list = try std.ArrayList(images.Image).initCapacity(allocator, parsed.value.len);
-    errdefer {
-        for (image_list.items) |*e| {
-            e.deinit();
-        }
-        image_list.deinit();
-    }
-
-    for (parsed.value) |element| {
-        var names = try std.ArrayList(images.Name).initCapacity(allocator, element.Names.len);
-        errdefer {
-            for (names.items) |e| {
-                allocator.free(e.repo);
-                allocator.free(e.name);
-                allocator.free(e.tag);
-            }
-            names.deinit();
-        }
-        for (element.Names) |e| {
-            const repo_name_divider = std.mem.lastIndexOf(u8, e, "/") orelse return std.json.Scanner.NextError.SyntaxError;
-            const name_tag_divider = std.mem.lastIndexOf(u8, e, ":") orelse return std.json.Scanner.NextError.SyntaxError;
-            const repo = try allocator.dupe(u8, e[0..repo_name_divider]);
-            errdefer allocator.free(repo);
-            const name = try allocator.dupe(u8, e[repo_name_divider + 1 .. name_tag_divider]);
-            errdefer allocator.free(name);
-            const tag = try allocator.dupe(u8, e[name_tag_divider + 1 .. e.len]);
-            errdefer allocator.free(tag);
-            try names.append(.{
-                .repo = repo,
-                .name = name,
-                .tag = tag,
-            });
-        }
-        const id = try allocator.dupe(u8, element.Id);
-        errdefer allocator.free(id);
-        const names_slice = try names.toOwnedSlice();
-        errdefer {
-            for (names_slice) |e| {
-                allocator.free(e.repo);
-                allocator.free(e.name);
-                allocator.free(e.tag);
-            }
-            allocator.free(names_slice);
-        }
-        try image_list.append(images.Image{
-            .minimal = .{
-                .allocator = allocator,
-                .id = id,
-                .names = names_slice,
-                .created = zeit.instant(.{
-                    .source = .{
-                        .rfc3339 = element.CreatedAt,
-                    },
-                }) catch |err| switch (err) {
-                    error.InvalidFormat, error.UnhandledFormat, error.InvalidISO8601 => return std.json.ParseFromValueError.InvalidCharacter,
-                    else => |rest| return rest,
-                },
-            },
-        });
-    }
-    return image_list;
-}
-
 pub fn listContainers(allocator: std.mem.Allocator, key: []const u8) errors.ListErrors!std.ArrayList(containers.Container) {
     if (utils.isInsideContainer() and !utils.isInsideLibnexpodContainer()) {
         return errors.LibnexpodErrors.InsideNonLibnexpodContainer;
@@ -146,22 +73,6 @@ const ImageMarshall = struct {
     Id: []const u8,
     CreatedAt: []const u8,
 };
-
-test listImages {
-    var image_list = listImages(std.testing.allocator) catch |err| switch (err) {
-        error.InsideNonLibnexpodContainer => {
-            std.debug.print("inside non-libnexpod container, ignoring test\n", .{});
-            return;
-        },
-        else => |rest| return rest,
-    };
-    defer {
-        for (image_list.items) |*e| {
-            e.deinit();
-        }
-        image_list.deinit();
-    }
-}
 
 const ContainerMarshall = struct {
     Names: []const []const u8,
