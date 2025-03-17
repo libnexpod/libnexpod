@@ -16,16 +16,16 @@ fn run(comptime key: []const u8, comptime name: []const u8, libnexpodd: []const 
     const nps = try libnexpod.openLibnexpodStorage(allocator, key);
     defer nps.deinit();
 
-    const images = try nps.getImages();
+    const images = try nps.getImageList();
     defer {
-        for (images.items) |img| {
+        for (images) |img| {
             img.deinit();
         }
-        images.deinit();
+        allocator.free(images);
     }
 
-    if (images.items.len > 0) {
-        const img = images.items[0];
+    if (images.len > 0) {
+        const img = images[0];
 
         var con = try nps.createContainer(.{
             .name = name,

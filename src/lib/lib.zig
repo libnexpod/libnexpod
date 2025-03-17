@@ -6,6 +6,7 @@ const image = @import("image.zig");
 const container = @import("container.zig");
 pub const errors = @import("errors.zig");
 const log = @import("logging");
+const podman = @import("podman-cli.zig");
 
 pub const Image = image.Image;
 pub const Name = image.Name;
@@ -21,24 +22,47 @@ pub const LibnexpodStorage = struct {
     key: []const u8,
 
     /// creates a list of all available libnexpod images on disk in minimal form
-    pub fn getImages(self: LibnexpodStorage) errors.ListErrors!std.ArrayList(image.Image) {
-        return try list.listImages(self.allocator);
+    pub fn getImageList(self: LibnexpodStorage) errors.ListErrors![]Image {
+        return try podman.listImages(self.allocator);
     }
 
-    test getImages {
+    test getImageList {
         const nps = try openLibnexpodStorage(std.testing.allocator, "libnexpod-unittest");
         defer nps.deinit();
 
-        var image_list = try nps.getImages();
+        const image_list = try nps.getImageList();
         defer {
-            for (image_list.items) |e| {
+            for (image_list) |e| {
                 e.deinit();
             }
-            image_list.deinit();
+            nps.allocator.free(image_list);
         }
-        for (image_list.items) |*img| {
+        for (image_list) |*img| {
             try img.makeFull();
         }
+    }
+
+    pub fn getImage(self: LibnexpodStorage, id: []const u8) errors.ListErrors!Image {
+        return try podman.getImage(self.allocator, id);
+    }
+
+    test getImage {
+        const nps = try openLibnexpodStorage(std.testing.allocator, "libnexpod-unittest");
+        defer nps.deinit();
+
+        const image_list = try nps.getImageList();
+        defer {
+            for (image_list) |e| {
+                e.deinit();
+            }
+            nps.allocator.free(image_list);
+        }
+
+        const id = image_list[0].getId();
+        const img = try nps.getImage(if (image_list.len > 0) id else return);
+        defer img.deinit();
+
+        try std.testing.expectEqualStrings(id, img.getId());
     }
 
     /// creates a list of all currently existing libnexpod containers with the current key in minimal form

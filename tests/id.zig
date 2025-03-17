@@ -15,16 +15,16 @@ pub fn main() !void {
     const nps = try libnexpod.openLibnexpodStorage(allocator, "libnexpod-systemtest");
     defer nps.deinit();
 
-    var images = try nps.getImages();
+    const images = try nps.getImageList();
     defer {
-        for (images.items) |img| {
+        for (images) |img| {
             img.deinit();
         }
-        images.deinit();
+        allocator.free(images);
     }
 
-    if (images.items.len > 0) {
-        const img = images.items[0];
+    if (images.len > 0) {
+        const img = images[0];
 
         var con = try nps.createContainer(.{
             .name = "id",

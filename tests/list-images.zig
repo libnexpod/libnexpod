@@ -11,13 +11,13 @@ pub fn main() !void {
     var nps = try libnexpod.openLibnexpodStorage(allocator, "libnexpod-systemtest");
     defer nps.deinit();
 
-    const images = try nps.getImages();
+    const images = try nps.getImageList();
     defer {
-        for (images.items) |img| {
+        for (images) |img| {
             img.deinit();
         }
-        images.deinit();
+        allocator.free(images);
     }
     // this should be at least one thanks to the setup, but it may be more if the developer has some on their machine
-    try std.testing.expect(images.items.len >= 1);
+    try std.testing.expect(images.len >= 1);
 }

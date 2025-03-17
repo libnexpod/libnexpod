@@ -1,7 +1,13 @@
 const std = @import("std");
 const builtin = @import("builtin");
 
-const libnexpod_log = std.log.scoped(.libnexpod);
+const scope = .libnexpod;
+
+const libnexpod_log = std.log.scoped(scope);
+
+pub fn enabled(comptime level: std.log.Level) bool {
+    return std.log.logEnabled(level, scope);
+}
 
 pub fn err(comptime format: []const u8, args: anytype) void {
     if (!builtin.is_test) {
