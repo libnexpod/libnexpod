@@ -37,6 +37,7 @@ pub fn main() !void {
         }
 
         try con.start();
+        try nps.updateContainer(&con);
 
         const variable = "TEST_VAR";
         const value = "This is the value";

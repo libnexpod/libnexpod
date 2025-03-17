@@ -36,15 +36,15 @@ pub fn main() !void {
             con.deinit();
         }
 
-        const containers = try nps.getContainers();
+        const containers = try nps.getContainerList();
         defer {
-            for (containers.items) |cont| {
+            for (containers) |cont| {
                 cont.deinit();
             }
-            containers.deinit();
+            allocator.free(containers);
         }
 
         // there must be at least one, but not at maximum one because the other tests exist
-        try std.testing.expect(containers.items.len >= 1);
+        try std.testing.expect(containers.len >= 1);
     }
 }

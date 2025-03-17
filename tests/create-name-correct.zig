@@ -37,7 +37,7 @@ fn run(comptime key: []const u8, comptime name: []const u8, libnexpodd: []const 
             con.deinit();
         }
 
-        try std.testing.expectEqualStrings(container_name, con.full.name);
+        try std.testing.expectEqualStrings(container_name, con.name);
     }
 }
 

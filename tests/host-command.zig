@@ -41,6 +41,7 @@ pub fn main() !void {
         }
 
         try con.start();
+        try nps.updateContainer(&con);
 
         // if you really think about it, the amounts of indirections (especially if you run this command inside of a container) is insane
         var process, const argv = try con.runCommand(.{
@@ -51,7 +52,7 @@ pub fn main() !void {
                 "inspect",
                 "--format",
                 "{{.Name}}",
-                con.getId(),
+                con.id,
             },
             .stdin_behaviour = .Ignore,
             .stdout_behaviour = .Pipe,

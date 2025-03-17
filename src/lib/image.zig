@@ -110,20 +110,6 @@ pub const Image = struct {
     }
 };
 
-const ImageMarshall = struct {
-    Id: []const u8,
-    Created: []const u8,
-    RepoTags: []const []const u8,
-    Version: ?[]const u8 = null,
-    Author: ?[]const u8 = null,
-    Config: struct {
-        Env: []const []const u8,
-        Cmd: []const []const u8,
-        Labels: std.json.Value,
-        WorkingDir: ?[]const u8 = null,
-    },
-};
-
 test "copy" {
     const expectEqualStrings = std.testing.expectEqualStrings;
     var name_array = [_]Name{.{

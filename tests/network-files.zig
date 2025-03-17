@@ -76,6 +76,7 @@ pub fn main() !void {
         }
 
         try con.start();
+        try nps.updateContainer(&con);
 
         for ([_][]const u8{
             "/etc/hosts",

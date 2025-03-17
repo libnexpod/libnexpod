@@ -8,42 +8,6 @@ const Image = @import("image.zig").Image;
 
 const label = "com.github.libnexpod";
 
-pub fn getContainerJSON(allocator: std.mem.Allocator, id: []const u8) (std.process.Child.RunError || errors.PodmanErrors)![]const u8 {
-    const inspect_argv = [_][]const u8{
-        "podman",
-        "container",
-        "inspect",
-        "--format",
-        "{{ json . }}",
-        id,
-    };
-    const result = try call(allocator, &inspect_argv);
-    log.debug("getContainerJSON received the following from podman: {s}", .{result});
-    return result;
-}
-
-pub fn getContainerListJSON(allocator: std.mem.Allocator, key: []const u8) (std.process.Child.RunError || errors.PodmanErrors)![]const u8 {
-    var get_argv = [_][]const u8{
-        "podman",
-        "container",
-        "list",
-        "--all",
-        "--format",
-        "json",
-        "--filter",
-        try std.mem.concat(allocator, u8, &[_][]const u8{ "label=" ++ label ++ "=", key }),
-    };
-    defer allocator.free(get_argv[get_argv.len - 1]);
-
-    const result = try call(allocator, &get_argv);
-    log.debug("getContainerListJSON received the following from podman: {s}", .{result});
-    return result;
-}
-
-test "getContainerListJSON leaktest" {
-    std.testing.allocator.free(try getContainerListJSON(std.testing.allocator, ""));
-}
-
 pub fn call(allocator: std.mem.Allocator, argv: []const []const u8) (std.process.Child.RunError || errors.PodmanErrors)![]const u8 {
     const result = std.process.Child.run(.{
         .allocator = allocator,

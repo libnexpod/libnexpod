@@ -1,6 +1,5 @@
 const std = @import("std");
 const utils = @import("utils");
-const list = @import("list.zig");
 const create = @import("create.zig");
 const image = @import("image.zig");
 const container = @import("container.zig");
@@ -20,6 +19,12 @@ pub const State = container.State;
 pub const LibnexpodStorage = struct {
     allocator: std.mem.Allocator,
     key: []const u8,
+
+    pub fn updateContainer(self: LibnexpodStorage, con: *Container) !void {
+        const new = try self.getContainer(con.id);
+        con.deinit();
+        con.* = new;
+    }
 
     /// creates a list of all available libnexpod images on disk in minimal form
     pub fn getImageList(self: LibnexpodStorage) errors.ListErrors![]Image {
@@ -63,24 +68,24 @@ pub const LibnexpodStorage = struct {
     }
 
     /// creates a list of all currently existing libnexpod containers with the current key in minimal form
-    pub fn getContainers(self: LibnexpodStorage) errors.ListErrors!std.ArrayList(container.Container) {
-        return try list.listContainers(self.allocator, self.key);
+    pub fn getContainerList(self: LibnexpodStorage) errors.ListErrors![]container.Container {
+        return try podman.listContainers(self.allocator, self.key);
     }
-
-    test getContainers {
+    test getContainerList {
         const nps = try openLibnexpodStorage(std.testing.allocator, "");
         defer nps.deinit();
 
-        var container_list = try nps.getContainers();
+        const container_list = try nps.getContainerList();
         defer {
-            for (container_list.items) |e| {
+            for (container_list) |e| {
                 e.deinit();
             }
-            container_list.deinit();
+            nps.allocator.free(container_list);
         }
-        for (container_list.items) |*con| {
-            try con.makeFull();
-        }
+    }
+
+    pub fn getContainer(self: LibnexpodStorage, id: []const u8) !Container {
+        return try podman.getContainer(self.allocator, self.key, id);
     }
 
     /// creates a container based on passed in information and gives you back info to the container in full form
@@ -97,7 +102,7 @@ pub const LibnexpodStorage = struct {
         home: ?[]const u8 = null,
         image: Image,
         libnexpodd_path: ?[]const u8 = null,
-    }) errors.CreationErrors!container.Container {
+    }) !container.Container {
         return try create.createContainer(self.allocator, .{
             .key = self.key,
             .name = args.name,

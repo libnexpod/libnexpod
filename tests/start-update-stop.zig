@@ -36,14 +36,18 @@ pub fn main() !void {
             con.deinit();
         }
 
-        try std.testing.expectEqual(.Created, con.getStatus());
+        try std.testing.expectEqual(.Created, con.state);
 
         try con.start();
+        try nps.updateContainer(&con);
 
-        try std.testing.expectEqual(.Running, con.getStatus());
+        try std.testing.expectEqual(.Running, con.state);
 
         try con.stop();
+        try nps.updateContainer(&con);
 
-        try std.testing.expectEqual(.Exited, con.getStatus());
+        try std.testing.expectEqual(.Exited, con.state);
+
+        try nps.updateContainer(&con);
     }
 }

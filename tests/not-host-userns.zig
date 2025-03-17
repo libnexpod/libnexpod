@@ -37,6 +37,7 @@ pub fn main() !void {
         }
 
         try con.start();
+        try nps.updateContainer(&con);
 
         const path = try std.fmt.allocPrint(allocator, "/proc/{}/ns/user", .{std.os.linux.getpid()});
         defer allocator.free(path);

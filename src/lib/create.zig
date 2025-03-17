@@ -2,6 +2,7 @@ const std = @import("std");
 const log = @import("logging");
 const utils = @import("utils");
 const errors = @import("errors.zig");
+const podman_cli = @import("podman-cli.zig");
 const podman = @import("podman.zig");
 const Image = @import("image.zig").Image;
 const Container = @import("container.zig").Container;
@@ -17,7 +18,7 @@ pub fn createContainer(allocator: std.mem.Allocator, args: struct {
     additional_mounts: []const Mount,
     home_dir: ?[]const u8,
     libnexpodd_path: ?[]const u8 = null,
-}) errors.CreationErrors!Container {
+}) !Container {
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
     const arena_allocator = arena.allocator();
@@ -56,10 +57,9 @@ pub fn createContainer(allocator: std.mem.Allocator, args: struct {
         .mounts = mounts.items,
     });
 
-    const container_json = try podman.getContainerJSON(arena_allocator, id);
-    const parsed = try std.json.parseFromSliceLeaky(Container, arena_allocator, container_json, .{});
+    const new = try podman_cli.getContainer(allocator, args.key, id);
 
-    return try parsed.copy(allocator);
+    return new;
 }
 
 fn getEntrypointArgv(arena_allocator: std.mem.Allocator, home: []const u8) errors.CreationErrors![]const []const u8 {

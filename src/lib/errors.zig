@@ -3,6 +3,7 @@ const std = @import("std");
 /// all errors emitted related to errors of this library
 pub const LibnexpodErrors = error{
     InsideNonLibnexpodContainer,
+    NoLibnexpodContainer,
 };
 
 /// all errors emitted related to errors of podman

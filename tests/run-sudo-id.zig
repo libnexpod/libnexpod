@@ -37,6 +37,7 @@ pub fn main() !void {
         }
 
         try con.start();
+        try nps.updateContainer(&con);
 
         var process, const argv = try con.runCommand(.{
             .allocator = allocator,
