@@ -16,7 +16,7 @@ pub fn fileExists(path: []const u8) bool {
     }
 }
 
-test "fileExists" {
+test fileExists {
     const path = "/tmp/libnexpodtest";
     (try std.fs.createFileAbsolute(path, .{})).close();
     defer std.fs.deleteFileAbsolute(path) catch unreachable;
@@ -24,18 +24,18 @@ test "fileExists" {
     try std.testing.expect(fileExists(path));
 }
 
-pub fn append_format(container: *std.ArrayList([]const u8), comptime format: []const u8, args: anytype) std.mem.Allocator.Error!void {
-    const arg = try std.fmt.allocPrint(container.allocator, format, args);
-    container.append(arg) catch |err| {
-        container.allocator.free(arg);
+pub fn appendFormat(allocator: std.mem.Allocator, container: *std.ArrayListUnmanaged([]const u8), comptime format: []const u8, args: anytype) std.mem.Allocator.Error!void {
+    const arg = try std.fmt.allocPrint(allocator, format, args);
+    container.append(allocator, arg) catch |err| {
+        allocator.free(arg);
         return err;
     };
 }
 
-pub fn appendClone(container: *std.ArrayList([]const u8), str: []const u8) std.mem.Allocator.Error!void {
-    const dupe = try container.allocator.dupe(u8, str);
-    errdefer container.allocator.free(str);
-    try container.append(dupe);
+pub fn appendClone(allocator: std.mem.Allocator, container: *std.ArrayListUnmanaged([]const u8), str: []const u8) std.mem.Allocator.Error!void {
+    const dupe = try allocator.dupe(u8, str);
+    errdefer allocator.free(str);
+    try container.append(allocator, dupe);
 }
 
 pub fn stringLessThan(_: void, a: []const u8, b: []const u8) bool {

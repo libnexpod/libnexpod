@@ -10,6 +10,341 @@ const Container = container.Container;
 
 const label = "com.github.libnexpod";
 
+const create_base = [_][]const u8{
+    "podman",
+    "create",
+    "--cgroupns",
+    "host",
+    "--dns",
+    "none",
+    "--ipc",
+    "host",
+    "--network",
+    "host",
+    "--no-hosts",
+    "--pid",
+    "host",
+    "--privileged",
+    "--security-opt",
+    "label=disable",
+    "--ulimit",
+    "host",
+    "--userns",
+    "keep-id",
+    "--user",
+    "root:root",
+    "--name",
+};
+
+const CreateContainerArguments = struct {
+    env: std.process.EnvMap,
+    key: []const u8,
+    name: []const u8,
+    image: Image,
+    entrypoint_argv: []const []const u8,
+    mounts: []const container.Mount,
+};
+
+pub fn createContainer(allocator: std.mem.Allocator, args: CreateContainerArguments) ![]const u8 {
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const tmp_allocator = arena.allocator();
+
+    const argv = try createCreateArgv(tmp_allocator, args);
+
+    const id = try call(allocator, argv);
+
+    return id;
+}
+
+fn createCreateArgv(arena_allocator: std.mem.Allocator, args: CreateContainerArguments) ![]const []const u8 {
+    const labels = try createLabels(arena_allocator, args.key);
+    const mounts = try createMounts(arena_allocator, args.mounts);
+    const envs = try createEnvs(arena_allocator, args.env);
+
+    const base = create_base ++ [_][]const u8{args.name};
+
+    const argv = try std.mem.concat(arena_allocator, []const u8, &[_][]const []const u8{
+        &base,
+        envs,
+        labels,
+        mounts,
+        &[_][]const u8{args.image.id},
+        args.entrypoint_argv,
+    });
+
+    return argv;
+}
+
+test createCreateArgv {
+    var helper_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer helper_arena.deinit();
+    const helper_allocator = helper_arena.allocator();
+    // setup
+    const mounts = [_]container.Mount{
+        container.Mount{
+            .destination = "/test",
+            .source = "/test",
+            .kind = .{ .devpts = .{} },
+            .options = .{ .rw = true },
+            .propagation = .none,
+        },
+    };
+
+    var env = std.process.EnvMap.init(std.testing.allocator);
+    defer env.deinit();
+    const env_key = "XDG_RUNTIME_DIR";
+    const env_val = "/run/hi";
+    try env.put(env_key, env_val);
+
+    const img = b: {
+        var img: Image = undefined;
+        img.id = "hello";
+        break :b img;
+    };
+
+    const entrypoint_argv = [_][]const u8{
+        "test",
+        "test",
+    };
+
+    const key = "key";
+
+    const name = "name";
+
+    const expected = try std.mem.concat(helper_allocator, []const u8, &[_][]const []const u8{
+        &create_base,
+        &[_][]const u8{
+            name,
+            "--env",
+            env_key ++ "=" ++ env_val,
+            "--label",
+            label ++ "=" ++ key,
+            "--mount=type=devpts,destination=" ++ mounts[0].destination ++ ",ro=true,exec=true",
+            img.id,
+        },
+        &entrypoint_argv,
+    });
+
+    // do
+    const args = try createCreateArgv(helper_allocator, .{
+        .entrypoint_argv = &entrypoint_argv,
+        .env = env,
+        .image = img,
+        .mounts = &mounts,
+        .key = key,
+        .name = name,
+    });
+
+    // check
+    outer: for (expected) |e| {
+        for (args) |a| {
+            if (std.mem.eql(u8, e, a)) {
+                continue :outer;
+            }
+        } else {
+            return error.TestValueNotFound;
+        }
+    }
+}
+
+fn createEnvs(allocator: std.mem.Allocator, env: std.process.EnvMap) ![]const []const u8 {
+    var list = std.ArrayListUnmanaged([]const u8).empty;
+    defer {
+        for (list.items) |e| {
+            allocator.free(e);
+        }
+        list.deinit(allocator);
+    }
+
+    var iter = env.iterator();
+    while (iter.next()) |entry| {
+        const op = try allocator.dupe(u8, "--env");
+        list.append(allocator, op) catch |err| {
+            allocator.free(op);
+            return err;
+        };
+        try utils.appendFormat(allocator, &list, "{s}={s}", .{ entry.key_ptr.*, entry.value_ptr.* });
+    }
+
+    return try list.toOwnedSlice(allocator);
+}
+
+test createEnvs {
+    var env = std.process.EnvMap.init(std.testing.allocator);
+    defer env.deinit();
+    const key1 = "abc";
+    const value1 = "efg";
+    try env.put(key1, value1);
+    try std.testing.expectError(error.NeededEnvironmentVariableNotFound, createEnvs(std.testing.allocator, env));
+    const key2 = "XDG_RUNTIME_DIR";
+    const value2 = "abcdef";
+    try env.put(key2, value2);
+    const cli = try createEnvs(std.testing.allocator, env);
+    defer {
+        for (cli) |e| {
+            std.testing.allocator.free(e);
+        }
+        std.testing.allocator.free(cli);
+    }
+    try std.testing.expectEqual(4, cli.len);
+    try std.testing.expectEqualStrings("--env", cli[0]);
+    try std.testing.expectEqualStrings("--env", cli[2]);
+    const pair1 = key1 ++ "=" ++ value1;
+    const pair2 = key2 ++ "=" ++ value2;
+    if (std.mem.eql(u8, pair1, cli[1])) {
+        try std.testing.expectEqualStrings(pair1, cli[1]);
+        try std.testing.expectEqualStrings(pair2, cli[3]);
+    } else {
+        try std.testing.expectEqualStrings(pair2, cli[1]);
+        try std.testing.expectEqualStrings(pair1, cli[3]);
+    }
+}
+
+fn createMounts(allocator: std.mem.Allocator, mounts: []const container.Mount) ![]const []const u8 {
+    var list = std.ArrayListUnmanaged([]const u8).empty;
+    defer {
+        for (list.items) |e| {
+            allocator.free(e);
+        }
+        list.deinit(allocator);
+    }
+
+    for (mounts) |m| {
+        var arg = std.ArrayListUnmanaged(u8).empty;
+        defer arg.deinit(allocator);
+        const writer = arg.writer(allocator);
+
+        try writer.writeAll("--mount=type=");
+        switch (m.kind) {
+            .bind => |bind_mount| {
+                try writer.writeAll("bind,");
+                if (!bind_mount.recursive) {
+                    try writer.writeAll("bind-nonrecursive,");
+                }
+                try writer.print("source={s}", .{m.source});
+            },
+            .volume => |volume_mount| try writer.print("volume,source={s}", .{volume_mount.name}),
+            .devpts => try writer.writeAll("devpts"),
+        }
+        try writer.print(",destination={s},ro={}", .{
+            m.destination,
+            !m.options.rw,
+        });
+        if (m.options.dev) {
+            try writer.writeAll(",dev");
+        }
+        if (m.options.exec) {
+            try writer.writeAll(",exec");
+        }
+        if (m.options.suid) {
+            try writer.writeAll(",suid");
+        }
+        if (m.propagation != .none) {
+            try writer.writeByte(',');
+            try writer.writeAll(@tagName(m.propagation));
+        }
+        const as_slice = try arg.toOwnedSlice(allocator);
+        errdefer allocator.free(as_slice);
+        try list.append(allocator, as_slice);
+    }
+
+    return list.toOwnedSlice(allocator);
+}
+
+test createMounts {
+    const vol = container.Mount{
+        .source = "/root/.local/share/containers/storage/volumes/dsgdsfgdfsg/_data",
+        .destination = "/run/test",
+        .options = .{
+            .dev = true,
+            .exec = false,
+            .rw = false,
+            .suid = true,
+        },
+        .propagation = .none,
+        .kind = .{ .volume = .{ .name = "vol1" } },
+    };
+    const vol_expected = "--mount=type=volume,source=vol1,destination=/run/test,ro=true,dev,suid";
+    const bind = container.Mount{
+        .source = "/root/Documents",
+        .destination = "/root/Documents",
+        .options = .{
+            .dev = false,
+            .exec = true,
+            .rw = true,
+            .suid = false,
+        },
+        .propagation = .rprivate,
+        .kind = .{ .bind = .{ .recursive = true } },
+    };
+    const bind_expected = "--mount=type=bind,source=/root/Documents,destination=/root/Documents,ro=false,exec,rprivate";
+    const devpts = container.Mount{
+        .source = "something",
+        .destination = "/dev/pts",
+        .options = .{
+            .rw = false,
+        },
+        .propagation = .runbindable,
+        .kind = .{ .devpts = .{} },
+    };
+    const devpts_expected = "--mount=type=devpts,destination=/dev/pts,ro=true,exec,runbindable";
+    const actual = try createMounts(std.testing.allocator, &[_]container.Mount{ vol, bind, devpts });
+    defer {
+        for (actual) |e| {
+            std.testing.allocator.free(e);
+        }
+        std.testing.allocator.free(actual);
+    }
+    try std.testing.expectEqual(3, actual.len);
+    try std.testing.expectEqualStrings(vol_expected, actual[0]);
+    try std.testing.expectEqualStrings(bind_expected, actual[1]);
+    try std.testing.expectEqualStrings(devpts_expected, actual[2]);
+}
+
+fn createLabels(allocator: std.mem.Allocator, key: []const u8) ![]const []const u8 {
+    var list = std.ArrayListUnmanaged([]const u8).empty;
+    defer {
+        for (list.items) |e| {
+            allocator.free(e);
+        }
+        list.deinit(allocator);
+    }
+
+    const marker = "--label";
+
+    {
+        const marker_copy = try allocator.dupe(u8, marker);
+        list.append(allocator, marker_copy) catch |err| {
+            allocator.free(marker_copy);
+            return err;
+        };
+
+        const arg = try std.mem.concat(allocator, u8, &[_][]const u8{ label ++ "=", key });
+        list.append(allocator, arg) catch |err| {
+            allocator.free(arg);
+            return err;
+        };
+    }
+
+    return try list.toOwnedSlice(allocator);
+}
+
+test createLabels {
+    const key = "hello";
+    const labels = try createLabels(std.testing.allocator, key);
+    defer {
+        for (labels) |e| {
+            std.testing.allocator.free(e);
+        }
+        std.testing.allocator.free(labels);
+    }
+
+    try std.testing.expectEqual(2, labels.len);
+    try std.testing.expectEqualStrings("--label", labels[0]);
+    try std.testing.expectEqualStrings(label ++ "=" ++ key, labels[1]);
+}
+
 pub fn listContainers(allocator: std.mem.Allocator, key: []const u8) ![]Container {
     if (utils.isInsideContainer() and !utils.isInsideLibnexpodContainer()) {
         return errors.LibnexpodErrors.InsideNonLibnexpodContainer;
@@ -588,7 +923,7 @@ fn call(allocator: std.mem.Allocator, argv: []const []const u8) (std.process.Chi
         },
     }
 }
-test "call" {
+test call {
     const msg = "Hello";
     const example = [_][]const u8{
         "echo",

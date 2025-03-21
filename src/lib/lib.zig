@@ -103,15 +103,35 @@ pub const LibnexpodStorage = struct {
         image: Image,
         libnexpodd_path: ?[]const u8 = null,
     }) !container.Container {
-        return try create.createContainer(self.allocator, .{
+        var tmp_arena = std.heap.ArenaAllocator.init(self.allocator);
+        defer tmp_arena.deinit();
+        const allocator = tmp_arena.allocator();
+
+        var env = try create.getEnvMap(allocator, args.env);
+        const home = try create.getHome(&env, args.home);
+
+        const container_name = val: {
+            if (std.mem.eql(u8, "", self.key)) {
+                break :val args.name;
+            } else {
+                break :val try std.mem.concat(allocator, u8, &[_][]const u8{ self.key, "-", args.name });
+            }
+        };
+
+        const mounts = try create.getMounts(allocator, args.additional_mounts, env, home, args.libnexpodd_path);
+
+        const argv = try create.getEntrypointArgv(allocator, home);
+
+        const id = try podman.createContainer(allocator, .{
             .key = self.key,
-            .name = args.name,
+            .env = env,
+            .name = container_name,
             .image = args.image,
-            .env = args.env,
-            .additional_mounts = args.additional_mounts,
-            .home_dir = args.home,
-            .libnexpodd_path = args.libnexpodd_path,
+            .entrypoint_argv = argv,
+            .mounts = mounts,
         });
+
+        return try self.getContainer(id[0 .. id.len - 1]);
     }
 
     /// returns necessary resources of ONLY this object storage
