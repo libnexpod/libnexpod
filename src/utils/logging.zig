@@ -1,7 +1,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
 
-const scope = .libnexpod;
+pub const scope = .libnexpod;
 
 const libnexpod_log = std.log.scoped(scope);
 

@@ -5,7 +5,7 @@ const image = @import("image.zig");
 const container = @import("container.zig");
 pub const errors = @import("errors.zig");
 const log = @import("logging");
-const podman = @import("podman-cli.zig");
+const podman = @import("podman.zig");
 
 pub const Image = image.Image;
 pub const Name = image.Name;

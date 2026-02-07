@@ -100,8 +100,9 @@ pub fn build(b: *std.Build) !void {
         .name = "shim",
         .root_module = shim_module,
     });
+    const shim_unit_tests_run = b.addRunArtifact(shim_unit_tests);
     const shim_unit_test_step = b.step("shimunittests", "Run only the unit tests of the shim");
-    shim_unit_test_step.dependOn(&shim_unit_tests.step);
+    shim_unit_test_step.dependOn(&shim_unit_tests_run.step);
     unittest_step.dependOn(shim_unit_test_step);
 
     // for lib
@@ -110,8 +111,9 @@ pub fn build(b: *std.Build) !void {
         .root_module = lib,
     });
     lib_unit_tests.linkLibC();
+    const lib_unit_tests_run = b.addRunArtifact(lib_unit_tests);
     const lib_unit_test_step = b.step("libunittests", "Run only the unit tests for the library");
-    lib_unit_test_step.dependOn(&lib_unit_tests.step);
+    lib_unit_test_step.dependOn(&lib_unit_tests_run.step);
     unittest_step.dependOn(lib_unit_test_step);
 
     // for daemon
@@ -119,8 +121,9 @@ pub fn build(b: *std.Build) !void {
         .name = "daemon",
         .root_module = daemon_module,
     });
+    const daemon_unit_tests_run = b.addRunArtifact(daemon_unit_tests);
     const daemon_unit_test_step = b.step("daemonunittests", "Run only the unit tests of the daemon");
-    daemon_unit_test_step.dependOn(&daemon_unit_tests.step);
+    daemon_unit_test_step.dependOn(&daemon_unit_tests_run.step);
     unittest_step.dependOn(daemon_unit_test_step);
 
     // system tests

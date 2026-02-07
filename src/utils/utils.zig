@@ -25,11 +25,10 @@ test fileExists {
 }
 
 pub fn appendFormat(allocator: std.mem.Allocator, container: *std.ArrayListUnmanaged([]const u8), comptime format: []const u8, args: anytype) std.mem.Allocator.Error!void {
+    try container.ensureUnusedCapacity(allocator, 1);
     const arg = try std.fmt.allocPrint(allocator, format, args);
-    container.append(allocator, arg) catch |err| {
-        allocator.free(arg);
-        return err;
-    };
+    errdefer comptime unreachable;
+    container.appendAssumeCapacity(arg);
 }
 
 pub fn appendClone(allocator: std.mem.Allocator, container: *std.ArrayListUnmanaged([]const u8), str: []const u8) std.mem.Allocator.Error!void {
