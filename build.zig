@@ -83,7 +83,7 @@ pub fn build(b: *std.Build) !void {
     const test_step = b.step("test", "Run all tests");
 
     // unit tests
-    const unittest_step = b.step("unittests", "Run unit tests");
+    const unittest_step = b.step("unittests", "Run just unit tests");
     test_step.dependOn(unittest_step);
     // base modules
     unittest_step.dependOn(&b.addTest(.{
@@ -126,15 +126,11 @@ pub fn build(b: *std.Build) !void {
     daemon_unit_test_step.dependOn(&daemon_unit_tests_run.step);
     unittest_step.dependOn(daemon_unit_test_step);
 
-    // system tests
-    const systemtest_step = b.step("systemtests", "Run system tests");
-    test_step.dependOn(systemtest_step);
-
     const optionModule = b.addOptions();
     optionModule.addOption(u32, "logLevel", b.option(u32, "log-level", "used log level for system tests") orelse 0);
 
     try addSystemTests(b, .{
-        .root_case = systemtest_step,
+        .root_case = test_step,
         .dir_path = "tests",
         .modules = &[_]Module{ .{
             .name = "libnexpod",
@@ -144,6 +140,7 @@ pub fn build(b: *std.Build) !void {
             .module = optionModule.createModule(),
         } },
         .daemon = daemon,
+        .after_step = &lib_unit_tests_run.step,
     });
 
     const docs = b.step("docs", "generate documentation");
@@ -170,6 +167,7 @@ fn addSystemTests(b: *std.Build, args: struct {
     dir_path: []const u8,
     modules: []const Module,
     daemon: *std.Build.Step.Compile,
+    after_step: *std.Build.Step,
 }) !void {
     const setup_check_build = b.addExecutable(.{
         .name = "setup_check",
@@ -181,6 +179,7 @@ fn addSystemTests(b: *std.Build, args: struct {
     });
     addModules(setup_check_build.root_module, args.modules);
     const setup_check = b.addRunArtifact(setup_check_build);
+    setup_check.step.dependOn(args.after_step);
 
     var dir = try b.build_root.handle.openDir(args.dir_path, .{ .iterate = true });
     defer dir.close();
