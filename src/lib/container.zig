@@ -119,12 +119,19 @@ pub const Container = struct {
             env.deinit();
         };
 
-        const ttyNeeded = args.stdin_behaviour == .Inherit and args.stdout_behaviour == .Inherit and std.io.getStdIn().isTty() and std.io.getStdOut().isTty();
+        const ttyNeeded = args.stdin_behaviour == .Inherit and args.stdout_behaviour == .Inherit and std.fs.File.stdin().isTty() and std.fs.File.stdout().isTty();
 
         const username = try getUserName(args.allocator);
         defer args.allocator.free(username);
 
-        const argv = try podman.createRunArgs(args.allocator, self.id, args.argv, ttyNeeded, env, args.working_dir, username);
+        const argv = try podman.createRunArgs(args.allocator, .{
+            .id = self.id,
+            .command = args.argv,
+            .ttyNeeded = ttyNeeded,
+            .env = env,
+            .work_dir = args.working_dir,
+            .username = username,
+        });
         errdefer {
             for (argv) |e| {
                 args.allocator.free(e);
@@ -144,7 +151,7 @@ pub const Container = struct {
 
     /// Deletes the container from disk. Use `force = true` if you want to delete it even if it currently running.
     /// It does free the resources of this handle.
-    pub fn delete(self: *Container, force: bool) (std.process.Child.RunError || errors.PodmanErrors)!void {
+    pub fn delete(self: *Container, force: bool) (std.process.Child.RunError || errors.PodmanErrors || std.Io.Writer.Error)!void {
         const id = self.id;
         const allocator = self.arena.child_allocator;
         try podman.deleteContainer(allocator, id, force);
@@ -260,24 +267,38 @@ pub const Container = struct {
     }
 };
 
-fn getUserName(allocator: std.mem.Allocator) (error{ InvalidFileFormat, StreamTooLong, EndOfStream } || std.fmt.ParseIntError || std.mem.Allocator.Error || std.fs.File.OpenError || std.fs.File.ReadError)![]const u8 {
+fn getUserName(gpa: std.mem.Allocator) (error{ InvalidFileFormat, StreamTooLong, EndOfStream } || std.fmt.ParseIntError || std.mem.Allocator.Error || std.fs.File.OpenError || std.fs.File.ReadError)![]const u8 {
     const uid = std.os.linux.getuid();
     var file = try std.fs.openFileAbsolute("/etc/passwd", .{});
     defer file.close();
-    var buffered_reader = std.io.bufferedReader(file.reader());
-    const reader = buffered_reader.reader();
+    var readBuffer: [1024]u8 = undefined;
+    var fileReader = file.reader(&readBuffer);
+    const reader: *std.Io.Reader = &fileReader.interface;
 
-    var buffer = std.ArrayList(u8).init(allocator);
+    var buffer: std.Io.Writer.Allocating = .init(gpa);
     defer buffer.deinit();
     while (true) {
         defer buffer.clearRetainingCapacity();
-        try reader.streamUntilDelimiter(buffer.writer(), '\n', null);
-        var iter = std.mem.tokenizeScalar(u8, buffer.items, ':');
+        _ = reader.streamDelimiter(&buffer.writer, '\n') catch |err| switch (err) {
+            error.ReadFailed => return fileReader.err.?,
+            error.WriteFailed => return error.OutOfMemory,
+            error.EndOfStream => return error.EndOfStream,
+        };
+        if (reader.peekByte()) |c| {
+            if (c == '\n') reader.toss(1);
+        } else |err| {
+            if (err == error.EndOfStream) {
+                return error.EndOfStream;
+            } else {
+                return fileReader.err.?;
+            }
+        }
+        var iter = std.mem.tokenizeScalar(u8, buffer.writer.buffered(), ':');
         const name = iter.next() orelse return error.InvalidFileFormat;
         _ = iter.next();
         const uid_str = iter.next() orelse return error.InvalidFileFormat;
         if (try std.fmt.parseInt(std.posix.uid_t, uid_str, 10) == uid) {
-            return try allocator.dupe(u8, name);
+            return try gpa.dupe(u8, name);
         }
     }
 }

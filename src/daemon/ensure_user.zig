@@ -7,7 +7,7 @@ const structs = @import("structs.zig");
 const Info = structs.Info;
 const Group = structs.Group;
 
-pub const EnsureUserErrors = std.fmt.AllocPrintError || std.process.Child.RunError || std.fs.File.OpenError || std.fs.File.ReadError || error{
+pub const EnsureUserErrors = std.mem.Allocator.Error || std.process.Child.RunError || std.fs.File.OpenError || std.fs.File.ReadError || error{
     GroupaddFailed,
     GroupaddUnexpectedError,
     OutOfMemory,
@@ -20,7 +20,7 @@ pub const EnsureUserErrors = std.fmt.AllocPrintError || std.process.Child.RunErr
     NoShellExists,
 };
 
-pub fn ensure_user(allocator: std.mem.Allocator, info: Info) EnsureUserErrors!void {
+pub fn ensure_user(gpa: std.mem.Allocator, info: Info) EnsureUserErrors!void {
     const run = if (builtin.is_test) test_child_run else std.process.Child.run;
     const groupadd_argv_template = [_][]const u8{
         "groupadd",
@@ -28,18 +28,18 @@ pub fn ensure_user(allocator: std.mem.Allocator, info: Info) EnsureUserErrors!vo
         "--gid",
     };
     for (info.group.items) |group| {
-        const gid = try std.fmt.allocPrint(allocator, "{}", .{group.gid});
-        defer allocator.free(gid);
+        const gid = try std.fmt.allocPrint(gpa, "{}", .{group.gid});
+        defer gpa.free(gid);
         const groupadd_argv = groupadd_argv_template ++ [_][]const u8{
             gid,
             group.name,
         };
         const result = try run(.{
-            .allocator = allocator,
+            .allocator = gpa,
             .argv = &groupadd_argv,
         });
-        allocator.free(result.stdout);
-        defer allocator.free(result.stderr);
+        gpa.free(result.stdout);
+        defer gpa.free(result.stderr);
         switch (result.term) {
             .Exited => |code| {
                 switch (code) {
@@ -61,10 +61,10 @@ pub fn ensure_user(allocator: std.mem.Allocator, info: Info) EnsureUserErrors!vo
         }
     }
     const sudo_group = try get_sudo_group();
-    const uid = try std.fmt.allocPrint(allocator, "{}", .{info.uid});
-    defer allocator.free(uid);
-    var useradd_argv = std.ArrayList([]const u8).init(allocator);
-    defer useradd_argv.deinit();
+    const uid = try std.fmt.allocPrint(gpa, "{}", .{info.uid});
+    defer gpa.free(uid);
+    var useradd_argv: std.ArrayList([]const u8) = .empty;
+    defer useradd_argv.deinit(gpa);
     const default_shell = "/bin/sh";
     const shell = result: {
         if (!utils.fileExists(info.shell)) {
@@ -75,7 +75,7 @@ pub fn ensure_user(allocator: std.mem.Allocator, info: Info) EnsureUserErrors!vo
             return error.NoShellExists;
         }
     };
-    try useradd_argv.appendSlice(&[_][]const u8{
+    try useradd_argv.appendSlice(gpa, &[_][]const u8{
         "useradd",
         "--home-dir",
         info.home,
@@ -89,33 +89,34 @@ pub fn ensure_user(allocator: std.mem.Allocator, info: Info) EnsureUserErrors!vo
     });
     const additional_groups = val: {
         if (info.group.items.len > 1) {
-            try useradd_argv.append("--groups");
-            var group_list = std.ArrayList(u8).init(allocator);
+            try useradd_argv.append(gpa, "--groups");
+            var group_list: std.Io.Writer.Allocating = .init(gpa);
             errdefer group_list.deinit();
-            try std.fmt.format(group_list.writer(), "{s}", .{sudo_group});
+            group_list.writer.print("{s}", .{sudo_group}) catch return error.OutOfMemory;
             for (info.group.items) |group| {
                 if (std.mem.eql(u8, group.name, sudo_group)) {
                     continue;
                 }
-                try std.fmt.format(group_list.writer(), ",{s}", .{group.name});
+                group_list.writer.print(",{s}", .{sudo_group}) catch return error.OutOfMemory;
             }
+            try useradd_argv.ensureUnusedCapacity(gpa, 1);
             const e = try group_list.toOwnedSlice();
-            try useradd_argv.append(e);
+            useradd_argv.appendAssumeCapacity(e);
             break :val e;
         } else {
             break :val null;
         }
     };
     defer if (additional_groups) |e| {
-        allocator.free(e);
+        gpa.free(e);
     };
-    try useradd_argv.append(info.user);
+    try useradd_argv.append(gpa, info.user);
     const add_result = try run(.{
-        .allocator = allocator,
+        .allocator = gpa,
         .argv = useradd_argv.items,
     });
-    allocator.free(add_result.stdout);
-    defer allocator.free(add_result.stderr);
+    gpa.free(add_result.stdout);
+    defer gpa.free(add_result.stderr);
     switch (add_result.term) {
         .Exited => |code| {
             switch (code) {
@@ -134,9 +135,9 @@ pub fn ensure_user(allocator: std.mem.Allocator, info: Info) EnsureUserErrors!vo
             return error.UseraddUnexpectedError;
         },
     }
-    var usermod_argv = std.ArrayList([]const u8).init(allocator);
-    defer usermod_argv.deinit();
-    try usermod_argv.appendSlice(&[_][]const u8{
+    var usermod_argv: std.ArrayList([]const u8) = .empty;
+    defer usermod_argv.deinit(gpa);
+    try usermod_argv.appendSlice(gpa, &[_][]const u8{
         "usermod",
         "--non-unique",
         "--home",
@@ -149,15 +150,15 @@ pub fn ensure_user(allocator: std.mem.Allocator, info: Info) EnsureUserErrors!vo
         "--groups",
     });
     if (additional_groups) |e| {
-        try usermod_argv.append(e);
+        try usermod_argv.append(gpa, e);
     }
-    try usermod_argv.append(info.user);
+    try usermod_argv.append(gpa, info.user);
     const mod_result = try run(.{
-        .allocator = allocator,
+        .allocator = gpa,
         .argv = usermod_argv.items,
     });
-    allocator.free(mod_result.stdout);
-    defer allocator.free(mod_result.stderr);
+    gpa.free(mod_result.stdout);
+    defer gpa.free(mod_result.stderr);
     switch (mod_result.term) {
         .Exited => |code| {
             switch (code) {

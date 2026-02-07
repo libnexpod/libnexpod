@@ -1,17 +1,27 @@
 const std = @import("std");
 const libnexpod = @import("libnexpod");
 
-fn checkOne(allocator: std.mem.Allocator, path: []const u8, con: *libnexpod.Container) !void {
+pub const std_options: std.Options = .{
+    .log_level = switch(@import("options").logLevel) {
+        0 => .debug,
+        1 => .info,
+        2 => .warn,
+        3 => .err,
+        else => unreachable,
+    },
+};
+
+fn checkOne(gpa: std.mem.Allocator, path: []const u8, con: *libnexpod.Container) !void {
     const max_bytes = comptime std.math.pow(usize, 2, 32);
 
-    var host_contents = std.ArrayList(u8).init(allocator);
-    defer host_contents.deinit();
     var host_file = try std.fs.openFileAbsolute(path, .{});
     defer host_file.close();
-    try host_file.reader().readAllArrayList(&host_contents, max_bytes);
+    var host_file_reader = host_file.reader(&.{});
+    const host_contents = try host_file_reader.interface.allocRemaining(gpa, .unlimited);
+    defer gpa.free(host_contents);
 
     var process, const argv = try con.runCommand(.{
-        .allocator = allocator,
+        .allocator = gpa,
         .argv = &[_][]const u8{
             "cat",
             path,
@@ -23,21 +33,21 @@ fn checkOne(allocator: std.mem.Allocator, path: []const u8, con: *libnexpod.Cont
     });
     defer {
         for (argv) |arg| {
-            allocator.free(arg);
+            gpa.free(arg);
         }
-        allocator.free(argv);
+        gpa.free(argv);
     }
 
     var stdout = std.ArrayListUnmanaged(u8).empty;
-    defer stdout.deinit(allocator);
+    defer stdout.deinit(gpa);
     var stderr = std.ArrayListUnmanaged(u8).empty;
-    defer stderr.deinit(allocator);
-    try process.collectOutput(allocator, &stdout, &stderr, max_bytes);
+    defer stderr.deinit(gpa);
+    try process.collectOutput(gpa, &stdout, &stderr, max_bytes);
 
     _ = try process.wait();
 
     try std.testing.expectEqualStrings("", stderr.items);
-    try std.testing.expectEqualStrings(host_contents.items, stdout.items);
+    try std.testing.expectEqualStrings(host_contents, stdout.items);
 }
 
 pub fn main() !void {

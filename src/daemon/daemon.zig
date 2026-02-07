@@ -140,7 +140,7 @@ fn loop(allocator: std.mem.Allocator) LoopErrors!void {
     }
 }
 
-fn setup(allocator: std.mem.Allocator) !void {
+fn setup(gpa: std.mem.Allocator) !void {
     const params = [_]clap.Param(clap.Help){
         .{
             .id = .{
@@ -217,7 +217,7 @@ fn setup(allocator: std.mem.Allocator) !void {
     var diag = clap.Diagnostic{};
     var result = clap.parse(clap.Help, &params, parsers, .{
         .diagnostic = &diag,
-        .allocator = allocator,
+        .allocator = gpa,
     }) catch |err| switch (err) {
         error.OutOfMemory => {
             log.err("not enough memory to parse CLI arguments", .{});
@@ -236,16 +236,17 @@ fn setup(allocator: std.mem.Allocator) !void {
     defer result.deinit();
 
     if (result.args.help != 0) {
-        return clap.help(std.io.getStdErr().writer(), clap.Help, &params, .{ .markdown_lite = false });
+        var stderr = std.fs.File.stderr().writer(&.{});
+        return clap.help(&stderr.interface, clap.Help, &params, .{ .markdown_lite = false });
     }
     var info = Info{
         .uid = undefined,
-        .group = std.ArrayList(Group).init(allocator),
+        .group = std.ArrayList(Group).empty,
         .user = undefined,
         .shell = undefined,
         .home = undefined,
     };
-    defer info.group.deinit();
+    defer info.group.deinit(gpa);
     inline for (std.meta.fields(Info)) |field| {
         const element = @field(result.args, field.name);
         if (@typeInfo(@TypeOf(element)) == .int) {
@@ -255,14 +256,14 @@ fn setup(allocator: std.mem.Allocator) !void {
                 log.err("you need to specify at least one group\n", .{});
                 return error.MissingParameter;
             }
-            try info.group.ensureTotalCapacity(result.args.group.len);
+            try info.group.ensureTotalCapacity(gpa, result.args.group.len);
             for (result.args.group) |new| {
                 for (info.group.items) |old| {
                     if (new.gid == old.gid and std.mem.eql(u8, new.name, old.name)) {
                         break;
                     }
                 } else {
-                    try info.group.append(new);
+                    try info.group.append(gpa, new);
                 }
             }
         } else {
@@ -275,10 +276,10 @@ fn setup(allocator: std.mem.Allocator) !void {
         }
     }
 
-    try ensure_user(allocator, info);
-    try host_integration(allocator, info);
+    try ensure_user(gpa, info);
+    try host_integration(gpa, info);
 
-    do_updatedb(.{ .allocator = allocator });
+    do_updatedb(.{ .allocator = gpa });
 }
 
 const ThreadInfo = struct {
@@ -332,11 +333,11 @@ fn create_libnexpod_files(allocator: std.mem.Allocator, uid: std.posix.uid_t, pr
     };
 }
 
-fn host_integration(allocator: std.mem.Allocator, info: Info) (error{ OutOfMemory, XDGRuntimeDirNotSet } || std.fs.File.OpenError || std.fs.File.WriteError || std.process.GetEnvMapError || std.posix.MakeDirError || std.fs.Dir.ChownError)!void {
-    var env: std.process.EnvMap, var runtime_dir: std.fs.Dir = try create_libnexpod_files(allocator, info.uid, info.group.items[0].gid);
+fn host_integration(gpa: std.mem.Allocator, info: Info) (error{ OutOfMemory, XDGRuntimeDirNotSet } || std.fs.File.OpenError || std.fs.File.WriteError || std.process.GetEnvMapError || std.posix.MakeDirError || std.fs.Dir.ChownError)!void {
+    var env: std.process.EnvMap, var runtime_dir: std.fs.Dir = try create_libnexpod_files(gpa, info.uid, info.group.items[0].gid);
     defer env.deinit();
     defer runtime_dir.close();
-    try nvidia(allocator, runtime_dir);
+    try nvidia(gpa, runtime_dir);
     // this is basically copied from toolbx, link to commit: https://github.com/containers/toolbox/commit/7542f5fc867b57bf3dc67bbae02cc09ccc0b5df2
     const rpm_dir = "/usr/lib/rpm/macros.d";
     if (utils.fileExists(rpm_dir)) {
@@ -353,5 +354,6 @@ fn host_integration(allocator: std.mem.Allocator, info: Info) (error{ OutOfMemor
     }
     const init_stamp = try runtime_dir.createFile("init-time-stamp", .{});
     defer init_stamp.close();
-    try init_stamp.writer().print("{}", .{std.time.timestamp()});
+    var init_stamp_writer = init_stamp.writer(&.{});
+    init_stamp_writer.interface.print("{}", .{std.time.timestamp()}) catch return init_stamp_writer.err.?;
 }

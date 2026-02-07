@@ -130,13 +130,19 @@ pub fn build(b: *std.Build) !void {
     const systemtest_step = b.step("systemtests", "Run system tests");
     test_step.dependOn(systemtest_step);
 
+    const optionModule = b.addOptions();
+    optionModule.addOption(u32, "logLevel", b.option(u32, "log-level", "used log level for system tests") orelse 0);
+
     try addSystemTests(b, .{
         .root_case = systemtest_step,
         .dir_path = "tests",
-        .modules = &[_]Module{.{
+        .modules = &[_]Module{ .{
             .name = "libnexpod",
             .module = lib,
-        }},
+        }, .{
+            .name = "options",
+            .module = optionModule.createModule(),
+        } },
         .daemon = daemon,
     });
 
@@ -144,9 +150,11 @@ pub fn build(b: *std.Build) !void {
     {
         const lib_doc_helper = b.addObject(.{
             .name = "lib",
-            .root_source_file = b.path("src/lib/lib.zig"),
-            .target = target,
-            .optimize = optimize,
+            .root_module = b.createModule(.{
+                .root_source_file = b.path("src/lib/lib.zig"),
+                .target = target,
+                .optimize = optimize,
+            }),
         });
         const lib_docs = lib_doc_helper.getEmittedDocs();
         docs.dependOn(&b.addInstallDirectory(.{
@@ -187,9 +195,11 @@ fn addSystemTests(b: *std.Build, args: struct {
         const name = try std.mem.concat(b.allocator, u8, &[_][]const u8{ "system-test-", entry.name[0..lastDotIndex] });
         const test_case = b.addExecutable(.{
             .name = name,
-            .root_source_file = b.path(path),
-            .optimize = .Debug,
-            .target = b.graph.host,
+            .root_module = b.createModule(.{
+                .root_source_file = b.path(path),
+                .optimize = .Debug,
+                .target = b.graph.host,
+            }),
         });
         args.root_case.dependOn(&b.addInstallArtifact(test_case, .{
             .dest_dir = .{

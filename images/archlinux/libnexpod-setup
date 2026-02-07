@@ -44,7 +44,7 @@ fi
 dirname="libnexpod-host-shim"
 git clone https://github.com/KilianHanich/arch-libnexpod-host-shim-pkg "$dirname"
 pushd "$dirname"
-git checkout 026e0236f9574654b3cf48db654310e644e147db
+git checkout 3605c276d06bf399f5cf3a6b56f5d08100a64073
 
 # temporary user because makepkg doesn't want to be run as root
 useradd --create-home builduser

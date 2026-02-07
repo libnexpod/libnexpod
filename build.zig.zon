@@ -4,12 +4,12 @@
     .fingerprint = 0xbe3f245fd18091ec,
     .dependencies = .{
         .clap = .{
-            .url = "https://github.com/Hejsil/zig-clap/archive/refs/tags/0.10.0.tar.gz",
-            .hash = "clap-0.10.0-oBajB434AQBDh-Ei3YtoKIRxZacVPF1iSwp3IX_ZB8f0",
+            .url = "https://github.com/Hejsil/zig-clap/archive/refs/tags/0.11.0.tar.gz",
+            .hash = "clap-0.11.0-oBajB-HnAQDPCKYzwF7rO3qDFwRcD39Q0DALlTSz5H7e",
         },
         .zeit = .{
-            .url = "https://github.com/rockorager/zeit/archive/refs/tags/v0.6.0.tar.gz",
-            .hash = "zeit-0.0.0-5I6bk_pZAgB03N1p1GmVOZ--gOFwwQSRKj1UXb5tnaKS",
+            .url = "https://github.com/rockorager/zeit/archive/refs/tags/v0.7.0.tar.gz",
+            .hash = "zeit-0.6.0-5I6bk7V8AgAY0-hM-vUYtKZUFYhXct-VRkqISNNTfEfb",
         },
     },
     .paths = .{

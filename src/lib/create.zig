@@ -40,46 +40,55 @@ pub fn getEntrypointArgv(arena_allocator: std.mem.Allocator, home: []const u8) !
     return try result.toOwnedSlice(arena_allocator);
 }
 
-fn getGroupsWithMember(allocator: std.mem.Allocator, user: []const u8, primary_group: std.posix.gid_t) !struct { []const u8, std.AutoHashMap(std.posix.gid_t, []const u8) } {
+fn getGroupsWithMember(gpa: std.mem.Allocator, user: []const u8, primary_group: std.posix.gid_t) !struct { []const u8, std.AutoHashMap(std.posix.gid_t, []const u8) } {
     var file = try std.fs.openFileAbsolute("/etc/group", .{});
     defer file.close();
-    var bufferedReader = std.io.bufferedReader(file.reader());
-    var reader = bufferedReader.reader();
+    var fileBuffer: [1024]u8 = undefined;
+    var fileReader = file.reader(&fileBuffer);
+    const reader: *std.Io.Reader = &fileReader.interface;
 
-    var result = std.AutoHashMap(std.posix.gid_t, []const u8).init(allocator);
+    var result = std.AutoHashMap(std.posix.gid_t, []const u8).init(gpa);
     errdefer {
         var iter = result.valueIterator();
         while (iter.next()) |e| {
-            allocator.free(e.*);
+            gpa.free(e.*);
         }
         result.deinit();
     }
 
     var primary_group_name: ?[]const u8 = null;
     errdefer if (primary_group_name) |pgn| {
-        allocator.free(pgn);
+        gpa.free(pgn);
     };
-    var buffer = std.ArrayListUnmanaged(u8).empty;
-    defer buffer.deinit(allocator);
+    var buffer = std.Io.Writer.Allocating.init(gpa);
+    defer buffer.deinit();
     while (true) {
-        reader.streamUntilDelimiter(buffer.writer(allocator), '\n', null) catch |err| switch (err) {
+        _ = reader.streamDelimiter(&buffer.writer, '\n') catch |err| switch (err) {
+            error.WriteFailed => return error.OutOfMemory,
+            error.ReadFailed => return fileReader.err.?,
             error.EndOfStream => break,
-            else => |rest| return rest,
         };
         defer buffer.clearRetainingCapacity();
+        if (reader.peekByte()) |c| {
+            if (c == '\n') reader.toss(1);
+        } else |err| {
+            if (err != error.EndOfStream) {
+                return fileReader.err.?;
+            }
+        }
 
-        if (std.mem.eql(u8, "", buffer.items)) {
+        if (std.mem.eql(u8, "", buffer.writer.buffered())) {
             break;
         }
 
-        var column_iterator = std.mem.splitScalar(u8, buffer.items, ':');
+        var column_iterator = std.mem.splitScalar(u8, buffer.writer.buffered(), ':');
         const name = column_iterator.next() orelse return error.InvalidFileFormat;
         // skip over password/x
         _ = column_iterator.next();
         const str_gid = column_iterator.next() orelse return error.InvalidFileFormat;
         const gid = try std.fmt.parseInt(std.posix.gid_t, str_gid, 10);
         if (gid == primary_group) {
-            primary_group_name = try allocator.dupe(u8, name);
+            primary_group_name = try gpa.dupe(u8, name);
             continue;
         }
         const user_list = column_iterator.next() orelse return error.InvalidFileFormat;
@@ -87,8 +96,8 @@ fn getGroupsWithMember(allocator: std.mem.Allocator, user: []const u8, primary_g
         var user_iter = std.mem.tokenizeScalar(u8, user_list, ',');
         while (user_iter.next()) |username| {
             if (std.mem.eql(u8, user, username)) {
-                const name_dupe = try allocator.dupe(u8, name);
-                errdefer allocator.free(name_dupe);
+                const name_dupe = try gpa.dupe(u8, name);
+                errdefer gpa.free(name_dupe);
                 try result.put(gid, name_dupe);
                 break;
             }
@@ -102,38 +111,53 @@ fn getGroupsWithMember(allocator: std.mem.Allocator, user: []const u8, primary_g
     }
 }
 
-fn getNamePrimaryGroupAndShellFromPasswd(allocator: std.mem.Allocator, uid: std.posix.uid_t) !struct { []const u8, std.posix.gid_t, []const u8 } {
+fn getNamePrimaryGroupAndShellFromPasswd(gpa: std.mem.Allocator, uid: std.posix.uid_t) !struct { []const u8, std.posix.gid_t, []const u8 } {
     var file = try std.fs.openFileAbsolute("/etc/passwd", .{});
     defer file.close();
-    var bufferedReader = std.io.bufferedReader(file.reader());
-    var reader = bufferedReader.reader();
+    var fileBuffer: [1024]u8 = undefined;
+    var fileReader = file.reader(&fileBuffer);
+    var reader = &fileReader.interface;
+    var lines: u32 = 0;
 
-    var buffer = std.ArrayList(u8).init(allocator);
+    var buffer = std.Io.Writer.Allocating.init(gpa);
     defer buffer.deinit();
     while (true) {
-        try reader.streamUntilDelimiter(buffer.writer(), '\n', null);
+        defer lines += 1;
+        const read = reader.streamDelimiter(&buffer.writer, '\n') catch |err| switch (err) {
+            error.WriteFailed => return error.OutOfMemory,
+            error.ReadFailed => return fileReader.err.?,
+            error.EndOfStream => break,
+        };
         defer buffer.clearRetainingCapacity();
+        if (reader.peekByte()) |c| {
+            if (c == '\n') reader.toss(1);
+        } else |err| {
+            if (err != error.EndOfStream) {
+                return fileReader.err.?;
+            }
+        }
 
-        if (std.mem.eql(u8, "", buffer.items)) {
+        if (std.mem.eql(u8, "", buffer.writer.buffered())) {
+            std.log.debug("read: {d}; lines: {d}", .{ read, lines });
             return error.UsernameNotFound;
         }
 
-        var iter = std.mem.splitScalar(u8, buffer.items, ':');
+        var iter = std.mem.splitScalar(u8, buffer.writer.buffered(), ':');
         const name = iter.next() orelse return error.InvalidFileFormat;
         // skip over password/x
         _ = iter.next();
         const str_uid = iter.next() orelse return error.InvalidFileFormat;
         if (try std.fmt.parseInt(std.posix.uid_t, str_uid, 10) == uid) {
-            const name_dupe = try allocator.dupe(u8, name);
-            errdefer allocator.free(name_dupe);
+            const name_dupe = try gpa.dupe(u8, name);
+            errdefer gpa.free(name_dupe);
             const str_gid = iter.next() orelse return error.InvalidFileFormat;
             const gid = try std.fmt.parseInt(std.posix.gid_t, str_gid, 10);
             // skip over GECOS and HOME
             _ = iter.next();
             _ = iter.next();
             const shell = iter.next() orelse return error.InvalidFileFormat;
-            const shell_dupe = try allocator.dupe(u8, shell);
-            errdefer allocator.free(shell_dupe);
+            const shell_dupe = try gpa.dupe(u8, shell);
+            errdefer gpa.free(shell_dupe);
 
             return .{ name_dupe, gid, shell_dupe };
         }

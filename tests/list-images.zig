@@ -1,6 +1,16 @@
 const std = @import("std");
 const libnexpod = @import("libnexpod");
 
+pub const std_options: std.Options = .{
+    .log_level = switch(@import("options").logLevel) {
+        0 => .debug,
+        1 => .info,
+        2 => .warn,
+        3 => .err,
+        else => unreachable,
+    },
+};
+
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer if (gpa.deinit() == .leak) {

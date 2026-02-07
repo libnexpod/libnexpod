@@ -32,7 +32,7 @@ jobs:
         context: images/${{ inputs.image-name }}
     - uses: mlugg/setup-zig@v1
       with:
-        version: 0.14.0
+        version: 0.15.0
     - name: "Debug"
       run: |
         zig build

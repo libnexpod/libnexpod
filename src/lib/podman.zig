@@ -61,7 +61,7 @@ pub fn createRunArgs(gpa: std.mem.Allocator, args: struct {
     return try result.toOwnedSlice(gpa);
 }
 
-pub fn stopContainer(gpa: std.mem.Allocator, id: []const u8) (std.process.Child.RunError || errors.PodmanErrors)!void {
+pub fn stopContainer(gpa: std.mem.Allocator, id: []const u8) (std.process.Child.RunError || errors.PodmanErrors || std.Io.Writer.Error)!void {
     const argv = [_][]const u8{
         "podman",
         "container",
@@ -74,7 +74,7 @@ pub fn stopContainer(gpa: std.mem.Allocator, id: []const u8) (std.process.Child.
     log.debug("stopContainer received the following from podman: {s}", .{stdout});
 }
 
-pub fn startContainer(gpa: std.mem.Allocator, id: []const u8) (std.process.Child.RunError || errors.PodmanErrors)!void {
+pub fn startContainer(gpa: std.mem.Allocator, id: []const u8) (std.process.Child.RunError || errors.PodmanErrors || std.Io.Writer.Error)!void {
     const argv = [_][]const u8{
         "podman",
         "container",
@@ -86,7 +86,7 @@ pub fn startContainer(gpa: std.mem.Allocator, id: []const u8) (std.process.Child
     log.debug("startContainer received the following from podman: {s}", .{stdout});
 }
 
-pub fn deleteContainer(gpa: std.mem.Allocator, id: []const u8, force: bool) (std.process.Child.RunError || errors.PodmanErrors)!void {
+pub fn deleteContainer(gpa: std.mem.Allocator, id: []const u8, force: bool) (std.process.Child.RunError || errors.PodmanErrors || std.Io.Writer.Error)!void {
     const base_argv = [_][]const u8{
         "podman",
         "container",
@@ -96,7 +96,7 @@ pub fn deleteContainer(gpa: std.mem.Allocator, id: []const u8, force: bool) (std
     var args: std.ArrayList([]const u8) = .empty;
     defer args.deinit(gpa);
     try args.ensureUnusedCapacity(gpa, base_argv.len + 2);
-    args.appendSliceAssumeCapacity(base_argv);
+    args.appendSliceAssumeCapacity(&base_argv);
     if (force) {
         args.appendAssumeCapacity("--force");
     }
@@ -106,7 +106,7 @@ pub fn deleteContainer(gpa: std.mem.Allocator, id: []const u8, force: bool) (std
     log.debug("deleteContainer received the following from podman: {s}", .{stdout});
 }
 
-pub fn deleteImage(gpa: std.mem.Allocator, id: []const u8, force: bool) (std.process.Child.RunError || errors.PodmanErrors)!void {
+pub fn deleteImage(gpa: std.mem.Allocator, id: []const u8, force: bool) (std.process.Child.RunError || errors.PodmanErrors || std.Io.Writer.Error)!void {
     const base_argv = [_][]const u8{
         "podman",
         "image",
@@ -256,7 +256,16 @@ test createCreateArgv {
                 continue :outer;
             }
         } else {
-            std.debug.print("missing value: {s}\nhad: {s}\n", .{ e, args });
+            const stderr = std.debug.lockStderrWriter(&.{});
+            defer std.debug.unlockStderrWriter();
+            stderr.print("missing value: {s}\nhad: {{", .{e}) catch {};
+            if (args.len > 0) {
+                stderr.writeAll(args[0]) catch {};
+                for (args[1..]) |a| {
+                    stderr.print(", {s}", .{a}) catch {};
+                }
+            }
+            stderr.writeAll("}\n") catch {};
             return error.TestValueNotFound;
         }
     }
@@ -280,9 +289,9 @@ fn createEnvs(gpa: std.mem.Allocator, env: std.process.EnvMap) ![]const []const 
         list.deinit(gpa);
     }
 
+    try list.ensureUnusedCapacity(gpa, 2 * env.count());
     var iter = env.iterator();
     while (iter.next()) |entry| {
-        try list.ensureUnusedCapacity(gpa, 2);
         list.appendAssumeCapacity(try gpa.dupe(u8, "--env"));
         try utils.appendFormat(gpa, &list, "{s}={s}", .{ entry.key_ptr.*, entry.value_ptr.* });
     }
@@ -493,7 +502,7 @@ pub fn listContainers(gpa: std.mem.Allocator, key: []const u8) ![]Container {
         "--filter",
         try std.mem.concat(tmp_allocator, u8, &.{ "label=" ++ label ++ "=", key }),
     });
-    log.debug("podman-cli.listContainers received the following IDs from podman: {s}", .{b: {
+    log.debug("podman.listContainers received the following IDs from podman: {s}", .{b: {
         if (log.enabled(.debug)) {
             const dupe = try tmp_allocator.dupe(u8, ids);
 
@@ -538,7 +547,7 @@ pub fn getContainer(gpa: std.mem.Allocator, key: []const u8, id: []const u8) !Co
         "{{ json . }}",
         id,
     });
-    log.debug("podman-cli.getContainer received the following JSON for the container with the ID {s}: {s}", .{ id, json });
+    log.debug("podman.getContainer received the following JSON for the container with the ID {s}: {s}", .{ id, json });
 
     const con = try parseContainer(gpa, json);
     errdefer con.deinit();
@@ -600,7 +609,7 @@ fn parseContainer(gpa: std.mem.Allocator, json: []const u8) !Container {
                     } else if (std.mem.eql(u8, "", e.Propagation)) {
                         break :val container.PropagationOptions.none;
                     } else {
-                        log.err("found unknown mount propagation: {s}\n", .{e.Propagation});
+                        log.err("found unknown mount propagation: {s}", .{e.Propagation});
                         return std.json.ParseFromValueError.UnexpectedToken;
                     }
                 };
@@ -649,7 +658,7 @@ fn parseContainer(gpa: std.mem.Allocator, json: []const u8) !Container {
                     } else if (std.mem.eql(u8, "nosuid", op) or std.mem.eql(u8, "noexec", op) or std.mem.eql(u8, "nodev", op) or std.mem.eql(u8, "bind", op)) {
                         continue;
                     } else {
-                        log.info("encountered unknown mount option, please report upstream if you think it should be added: {s}\n", .{op});
+                        log.info("encountered unknown mount option, please report upstream if you think it should be added: {s}", .{op});
                     }
                 }
                 mounts[i] = mount;
@@ -842,7 +851,7 @@ pub fn listImages(gpa: std.mem.Allocator) ![]Image {
         "--filter",
         "label=" ++ label,
     });
-    log.debug("podman-cli.listImages received the following IDs from podman: {s}", .{b: {
+    log.debug("podman.listImages received the following IDs from podman: {s}", .{b: {
         if (log.enabled(.debug)) {
             const dupe = try tmp_allocator.dupe(u8, ids);
 
@@ -875,7 +884,7 @@ pub fn getImage(gpa: std.mem.Allocator, id: []const u8) !Image {
     defer tmp_arena.deinit();
     const tmp_allocator = tmp_arena.allocator();
 
-    const json = try call(tmp_allocator, &.{
+    var json = try call(tmp_allocator, &.{
         "podman",
         "image",
         "inspect",
@@ -883,7 +892,8 @@ pub fn getImage(gpa: std.mem.Allocator, id: []const u8) !Image {
         "{{ json . }}",
         id,
     });
-    log.debug("podman-cli.getImage received the following JSON for the image with the ID {s}: {s}", .{ id, json });
+    if (json[json.len - 1] == '\n') json.len -= 1;
+    log.debug("podman.getImage received the following JSON for the image with the ID {s}: {s}", .{ id, json });
 
     return try parseImage(gpa, json);
 }
@@ -1007,14 +1017,14 @@ const ImageMarshal = struct {
     },
 };
 
-fn call(gpa: std.mem.Allocator, argv: []const []const u8) (std.process.Child.RunError || errors.PodmanErrors)![]const u8 {
+fn call(gpa: std.mem.Allocator, argv: []const []const u8) (std.process.Child.RunError || errors.PodmanErrors || std.Io.Writer.Error)![]const u8 {
     const result = std.process.Child.run(.{
         .allocator = gpa,
         .argv = argv,
         .max_output_bytes = comptime std.math.maxInt(usize),
     }) catch |err| switch (err) {
         error.FileNotFound => {
-            log.err("podman not found\n", .{});
+            log.err("podman not found", .{});
             return errors.PodmanErrors.PodmanNotFound;
         },
         else => |rest| return rest,
@@ -1026,28 +1036,28 @@ fn call(gpa: std.mem.Allocator, argv: []const []const u8) (std.process.Child.Run
             if (code == 0) {
                 return result.stdout;
             } else {
-                var argv_str = std.ArrayList(u8).init(gpa);
+                var argv_str: std.Io.Writer.Allocating = .init(gpa);
                 defer argv_str.deinit();
-                try argv_str.writer().writeByte('[');
+                try argv_str.writer.writeByte('[');
                 if (argv.len > 0) {
                     for (argv[0 .. argv.len - 1]) |e| {
-                        try argv_str.writer().print("{s}, ", .{e});
+                        try argv_str.writer.print("{s}, ", .{e});
                     }
-                    try argv_str.writer().print("{s}", .{argv[argv.len - 1]});
+                    try argv_str.writer.print("{s}", .{argv[argv.len - 1]});
                 }
-                try argv_str.writer().writeByte(']');
+                try argv_str.writer.writeByte(']');
                 const stderr = if (result.stderr.len > 0 and result.stderr[result.stderr.len - 1] == '\n')
                     result.stderr[0 .. result.stderr.len - 1]
                 else
                     result.stderr;
                 log.err("Call to podman exited with: {}", .{code});
                 log.err("stderr output: {s}", .{stderr});
-                log.err("argv was: {s}", .{argv_str.items});
+                log.err("argv was: {s}", .{argv_str.writer.buffer});
                 return errors.PodmanErrors.PodmanFailed;
             }
         },
         else => |code| {
-            log.err("Podman exited unexpectedly with {any}\n{s}\n{s}\n", .{ code, result.stdout, result.stderr });
+            log.err("Podman exited unexpectedly with {any}\n{s}\n{s}", .{ code, result.stdout, result.stderr });
             return errors.PodmanErrors.PodmanUnexpectedExit;
         },
     }
