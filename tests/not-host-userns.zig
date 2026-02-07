@@ -1,6 +1,16 @@
 const std = @import("std");
 const libnexpod = @import("libnexpod");
 
+pub const std_options: std.Options = .{
+    .log_level = switch(@import("options").logLevel) {
+        0 => .debug,
+        1 => .info,
+        2 => .warn,
+        3 => .err,
+        else => unreachable,
+    },
+};
+
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer if (gpa.deinit() == .leak) {
@@ -15,16 +25,16 @@ pub fn main() !void {
     const nps = try libnexpod.openLibnexpodStorage(allocator, "libnexpod-systemtest");
     defer nps.deinit();
 
-    var images = try nps.getImages();
+    const images = try nps.getImageList();
     defer {
-        for (images.items) |img| {
+        for (images) |img| {
             img.deinit();
         }
-        images.deinit();
+        allocator.free(images);
     }
 
-    if (images.items.len > 0) {
-        const img = images.items[0];
+    if (images.len > 0) {
+        const img = images[0];
 
         var con = try nps.createContainer(.{
             .name = "not-host-userns",
@@ -37,6 +47,7 @@ pub fn main() !void {
         }
 
         try con.start();
+        try nps.updateContainer(&con);
 
         const path = try std.fmt.allocPrint(allocator, "/proc/{}/ns/user", .{std.os.linux.getpid()});
         defer allocator.free(path);

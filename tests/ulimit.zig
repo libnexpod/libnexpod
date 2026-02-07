@@ -1,23 +1,33 @@
 const std = @import("std");
 const libnexpod = @import("libnexpod");
 
-fn checkOne(allocator: std.mem.Allocator, con: *libnexpod.Container, ulimit_argv: []const u8) !void {
+pub const std_options: std.Options = .{
+    .log_level = switch(@import("options").logLevel) {
+        0 => .debug,
+        1 => .info,
+        2 => .warn,
+        3 => .err,
+        else => unreachable,
+    },
+};
+
+fn checkOne(gpa: std.mem.Allocator, con: *libnexpod.Container, ulimit_argv: []const u8) !void {
     const max_bytes = std.math.pow(usize, 2, 32);
 
     var ulimit = std.process.Child.init(&[_][]const u8{
         "bash",
         "-c",
         ulimit_argv,
-    }, allocator);
+    }, gpa);
     ulimit.stdout_behavior = .Pipe;
     try ulimit.spawn();
-    var expected = std.ArrayList(u8).init(allocator);
-    defer expected.deinit();
-    try ulimit.stdout.?.reader().readAllArrayList(&expected, max_bytes);
+    var ulimitStdout = ulimit.stdout.?.reader(&.{});
+    const expected = try ulimitStdout.interface.allocRemaining(gpa, .unlimited);
+    defer gpa.free(expected);
     _ = try ulimit.wait();
 
     var process, const argv = try con.runCommand(.{
-        .allocator = allocator,
+        .allocator = gpa,
         .argv = &[_][]const u8{
             "bash",
             "-c",
@@ -30,21 +40,21 @@ fn checkOne(allocator: std.mem.Allocator, con: *libnexpod.Container, ulimit_argv
     });
     defer {
         for (argv) |arg| {
-            allocator.free(arg);
+            gpa.free(arg);
         }
-        allocator.free(argv);
+        gpa.free(argv);
     }
 
     var stdout = std.ArrayListUnmanaged(u8).empty;
-    defer stdout.deinit(allocator);
+    defer stdout.deinit(gpa);
     var stderr = std.ArrayListUnmanaged(u8).empty;
-    defer stderr.deinit(allocator);
-    try process.collectOutput(allocator, &stdout, &stderr, max_bytes);
+    defer stderr.deinit(gpa);
+    try process.collectOutput(gpa, &stdout, &stderr, max_bytes);
 
     _ = try process.wait();
 
     try std.testing.expectEqualStrings("", stderr.items);
-    try std.testing.expectEqualStrings(expected.items, stdout.items);
+    try std.testing.expectEqualStrings(expected, stdout.items);
 }
 
 pub fn main() !void {
@@ -61,16 +71,16 @@ pub fn main() !void {
     const nps = try libnexpod.openLibnexpodStorage(allocator, "libnexpod-systemtest");
     defer nps.deinit();
 
-    var images = try nps.getImages();
+    const images = try nps.getImageList();
     defer {
-        for (images.items) |img| {
+        for (images) |img| {
             img.deinit();
         }
-        images.deinit();
+        allocator.free(images);
     }
 
-    if (images.items.len > 0) {
-        const img = images.items[0];
+    if (images.len > 0) {
+        const img = images[0];
 
         var con = try nps.createContainer(.{
             .name = "ulimit",
@@ -83,6 +93,7 @@ pub fn main() !void {
         }
 
         try con.start();
+        try nps.updateContainer(&con);
 
         for ([_][]const u8{
             "ulimit -H -R",

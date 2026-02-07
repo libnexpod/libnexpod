@@ -8,22 +8,24 @@ pub fn get_sudo_group() (std.fs.File.OpenError || std.fs.File.ReadError || error
     };
     var file = try std.fs.openFileAbsolute("/etc/group", .{ .mode = .read_only });
     defer file.close();
-    var br = std.io.bufferedReader(file.reader());
-    var reader = br.reader();
-    var buffer: [std.os.linux.NAME_MAX]u8 = undefined;
-    var writer = std.io.fixedBufferStream(&buffer);
-    while (reader.streamUntilDelimiter(writer.writer(), ':', buffer.len)) {
-        const group = writer.getWritten();
+    var readBuffer: [1024]u8 = undefined;
+    var fileReader = file.reader(&readBuffer);
+    const reader: *std.Io.Reader = &fileReader.interface;
+    while (reader.takeDelimiterExclusive(':')) |groupConstant| {
+        var group = groupConstant;
+        if (group[0] == '\n') {
+            group.ptr += 1;
+            group.len -= 1;
+        }
         for (possible_group_names) |possibility| {
             if (std.mem.eql(u8, group, possibility)) {
                 return possibility;
             }
         }
-        writer.reset();
-        try reader.skipUntilDelimiterOrEof('\n');
+        _ = reader.discardDelimiterExclusive('\n') catch return fileReader.err.?;
     } else |err| {
         switch (err) {
-            error.StreamTooLong, error.NoSpaceLeft => {
+            error.StreamTooLong => {
                 log.err("encountered too long group name or invalid /etc/group file\n", .{});
                 return error.GroupFileProblem;
             },
@@ -31,7 +33,7 @@ pub fn get_sudo_group() (std.fs.File.OpenError || std.fs.File.ReadError || error
                 log.err("no sudo group found\n", .{});
                 return error.NoSudoGroupFound;
             },
-            else => |rest| return rest,
+            else => return fileReader.err.?,
         }
     }
 }

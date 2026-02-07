@@ -1,6 +1,16 @@
 const std = @import("std");
 const libnexpod = @import("libnexpod");
 
+pub const std_options: std.Options = .{
+    .log_level = switch(@import("options").logLevel) {
+        0 => .debug,
+        1 => .info,
+        2 => .warn,
+        3 => .err,
+        else => unreachable,
+    },
+};
+
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer if (gpa.deinit() == .leak) {
@@ -15,16 +25,16 @@ pub fn main() !void {
     var nps = try libnexpod.openLibnexpodStorage(allocator, "libnexpod-systemtest");
     defer nps.deinit();
 
-    const images = try nps.getImages();
+    const images = try nps.getImageList();
     defer {
-        for (images.items) |img| {
+        for (images) |img| {
             img.deinit();
         }
-        images.deinit();
+        allocator.free(images);
     }
 
-    if (images.items.len > 0) {
-        const img = images.items[0];
+    if (images.len > 0) {
+        const img = images[0];
 
         var con = try nps.createContainer(.{
             .name = "list-container",
@@ -36,15 +46,15 @@ pub fn main() !void {
             con.deinit();
         }
 
-        const containers = try nps.getContainers();
+        const containers = try nps.getContainerList();
         defer {
-            for (containers.items) |cont| {
+            for (containers) |cont| {
                 cont.deinit();
             }
-            containers.deinit();
+            allocator.free(containers);
         }
 
         // there must be at least one, but not at maximum one because the other tests exist
-        try std.testing.expect(containers.items.len >= 1);
+        try std.testing.expect(containers.len >= 1);
     }
 }

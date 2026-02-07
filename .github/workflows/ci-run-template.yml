@@ -30,9 +30,9 @@ jobs:
         tags: ${{ inputs.image-tag }}
         containerfiles: images/${{ inputs.image-name }}/Containerfile
         context: images/${{ inputs.image-name }}
-    - uses: mlugg/setup-zig@v1
+    - uses: mlugg/setup-zig@v2
       with:
-        version: 0.14.0
+        version: 0.15.2
     - name: "Debug"
       run: |
         zig build

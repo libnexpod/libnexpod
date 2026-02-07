@@ -83,7 +83,7 @@ pub fn build(b: *std.Build) !void {
     const test_step = b.step("test", "Run all tests");
 
     // unit tests
-    const unittest_step = b.step("unittests", "Run unit tests");
+    const unittest_step = b.step("unittests", "Run just unit tests");
     test_step.dependOn(unittest_step);
     // base modules
     unittest_step.dependOn(&b.addTest(.{
@@ -100,8 +100,9 @@ pub fn build(b: *std.Build) !void {
         .name = "shim",
         .root_module = shim_module,
     });
+    const shim_unit_tests_run = b.addRunArtifact(shim_unit_tests);
     const shim_unit_test_step = b.step("shimunittests", "Run only the unit tests of the shim");
-    shim_unit_test_step.dependOn(&shim_unit_tests.step);
+    shim_unit_test_step.dependOn(&shim_unit_tests_run.step);
     unittest_step.dependOn(shim_unit_test_step);
 
     // for lib
@@ -110,8 +111,9 @@ pub fn build(b: *std.Build) !void {
         .root_module = lib,
     });
     lib_unit_tests.linkLibC();
+    const lib_unit_tests_run = b.addRunArtifact(lib_unit_tests);
     const lib_unit_test_step = b.step("libunittests", "Run only the unit tests for the library");
-    lib_unit_test_step.dependOn(&lib_unit_tests.step);
+    lib_unit_test_step.dependOn(&lib_unit_tests_run.step);
     unittest_step.dependOn(lib_unit_test_step);
 
     // for daemon
@@ -119,31 +121,37 @@ pub fn build(b: *std.Build) !void {
         .name = "daemon",
         .root_module = daemon_module,
     });
+    const daemon_unit_tests_run = b.addRunArtifact(daemon_unit_tests);
     const daemon_unit_test_step = b.step("daemonunittests", "Run only the unit tests of the daemon");
-    daemon_unit_test_step.dependOn(&daemon_unit_tests.step);
+    daemon_unit_test_step.dependOn(&daemon_unit_tests_run.step);
     unittest_step.dependOn(daemon_unit_test_step);
 
-    // system tests
-    const systemtest_step = b.step("systemtests", "Run system tests");
-    test_step.dependOn(systemtest_step);
+    const optionModule = b.addOptions();
+    optionModule.addOption(u32, "logLevel", b.option(u32, "log-level", "used log level for system tests") orelse 0);
 
     try addSystemTests(b, .{
-        .root_case = systemtest_step,
+        .root_case = test_step,
         .dir_path = "tests",
-        .modules = &[_]Module{.{
+        .modules = &[_]Module{ .{
             .name = "libnexpod",
             .module = lib,
-        }},
+        }, .{
+            .name = "options",
+            .module = optionModule.createModule(),
+        } },
         .daemon = daemon,
+        .after_step = &lib_unit_tests_run.step,
     });
 
     const docs = b.step("docs", "generate documentation");
     {
         const lib_doc_helper = b.addObject(.{
             .name = "lib",
-            .root_source_file = b.path("src/lib/lib.zig"),
-            .target = target,
-            .optimize = optimize,
+            .root_module = b.createModule(.{
+                .root_source_file = b.path("src/lib/lib.zig"),
+                .target = target,
+                .optimize = optimize,
+            }),
         });
         const lib_docs = lib_doc_helper.getEmittedDocs();
         docs.dependOn(&b.addInstallDirectory(.{
@@ -159,6 +167,7 @@ fn addSystemTests(b: *std.Build, args: struct {
     dir_path: []const u8,
     modules: []const Module,
     daemon: *std.Build.Step.Compile,
+    after_step: *std.Build.Step,
 }) !void {
     const setup_check_build = b.addExecutable(.{
         .name = "setup_check",
@@ -170,6 +179,7 @@ fn addSystemTests(b: *std.Build, args: struct {
     });
     addModules(setup_check_build.root_module, args.modules);
     const setup_check = b.addRunArtifact(setup_check_build);
+    setup_check.step.dependOn(args.after_step);
 
     var dir = try b.build_root.handle.openDir(args.dir_path, .{ .iterate = true });
     defer dir.close();
@@ -184,9 +194,11 @@ fn addSystemTests(b: *std.Build, args: struct {
         const name = try std.mem.concat(b.allocator, u8, &[_][]const u8{ "system-test-", entry.name[0..lastDotIndex] });
         const test_case = b.addExecutable(.{
             .name = name,
-            .root_source_file = b.path(path),
-            .optimize = .Debug,
-            .target = b.graph.host,
+            .root_module = b.createModule(.{
+                .root_source_file = b.path(path),
+                .optimize = .Debug,
+                .target = b.graph.host,
+            }),
         });
         args.root_case.dependOn(&b.addInstallArtifact(test_case, .{
             .dest_dir = .{

@@ -27,9 +27,9 @@ fn handle(allocator: std.mem.Allocator) !void {
 pub fn main() void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
-    const stderr = std.io.getStdErr().writer();
+    var stderr = std.fs.File.stderr().writer(&.{});
     handle(arena.allocator()) catch |err| {
-        stderr.print("libnexpod-host-shim: {s}...\n", .{switch (err) {
+        stderr.interface.print("libnexpod-host-shim: {s}...\n", .{switch (err) {
             error.FileNotFound => "flatpak-spawn: command not found",
             error.AccessDenied => "flatpak-spawn: access denied",
             error.ProcessFdQuotaExceeded => "ProcessFdQuotaExceeded",
@@ -43,6 +43,7 @@ pub fn main() void {
             error.NotDir => "flatpak-spawn: invalid path",
             error.FileBusy => "flatpak-spawn: file busy",
             error.NameTooLong => "flatpak-spawn: name too long",
+            error.PermissionDenied => "flatpak-spawn: permission denied",
         }}) catch unreachable;
     };
 }

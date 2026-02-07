@@ -1,6 +1,16 @@
 const std = @import("std");
 const libnexpod = @import("libnexpod");
 
+pub const std_options: std.Options = .{
+    .log_level = switch(@import("options").logLevel) {
+        0 => .debug,
+        1 => .info,
+        2 => .warn,
+        3 => .err,
+        else => unreachable,
+    },
+};
+
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer if (gpa.deinit() == .leak) {
@@ -15,16 +25,16 @@ pub fn main() !void {
     const nps = try libnexpod.openLibnexpodStorage(allocator, "libnexpod-systemtest");
     defer nps.deinit();
 
-    var images = try nps.getImages();
+    const images = try nps.getImageList();
     defer {
-        for (images.items) |img| {
+        for (images) |img| {
             img.deinit();
         }
-        images.deinit();
+        allocator.free(images);
     }
 
-    if (images.items.len > 0) {
-        const img = images.items[0];
+    if (images.len > 0) {
+        const img = images[0];
 
         var con = try nps.createContainer(.{
             .name = "run-interactive",
@@ -37,6 +47,7 @@ pub fn main() !void {
         }
 
         try con.start();
+        try nps.updateContainer(&con);
 
         var process, const argv = try con.runCommand(.{
             .allocator = allocator,
@@ -63,7 +74,8 @@ pub fn main() !void {
             return;
         };
 
-        const stdin = process.stdin.?.writer();
+        var stdinBuffer: [1024]u8 = undefined;
+        var stdin = process.stdin.?.writer(&stdinBuffer);
         const script = [_][]const []const u8{
             &[_][]const u8{
                 "pwd",
@@ -84,10 +96,11 @@ pub fn main() !void {
         };
         for (script) |command| {
             for (command) |c| {
-                try stdin.print("{s} ", .{c});
+                try stdin.interface.print("{s} ", .{c});
             }
-            try stdin.writeByte('\n');
+            try stdin.interface.writeByte('\n');
         }
+        try stdin.interface.flush();
 
         const max_bytes = comptime std.math.pow(usize, 2, 32);
 

@@ -1,11 +1,11 @@
 const std = @import("std");
 const utils = @import("utils");
-const list = @import("list.zig");
 const create = @import("create.zig");
 const image = @import("image.zig");
 const container = @import("container.zig");
 pub const errors = @import("errors.zig");
 const log = @import("logging");
+const podman = @import("podman.zig");
 
 pub const Image = image.Image;
 pub const Name = image.Name;
@@ -20,46 +20,72 @@ pub const LibnexpodStorage = struct {
     allocator: std.mem.Allocator,
     key: []const u8,
 
-    /// creates a list of all available libnexpod images on disk in minimal form
-    pub fn getImages(self: LibnexpodStorage) errors.ListErrors!std.ArrayList(image.Image) {
-        return try list.listImages(self.allocator);
+    pub fn updateContainer(self: LibnexpodStorage, con: *Container) !void {
+        const new = try self.getContainer(con.id);
+        con.deinit();
+        con.* = new;
     }
 
-    test getImages {
+    /// creates a list of all available libnexpod images on disk in minimal form
+    pub fn getImageList(self: LibnexpodStorage) errors.ListErrors![]Image {
+        return try podman.listImages(self.allocator);
+    }
+
+    test getImageList {
         const nps = try openLibnexpodStorage(std.testing.allocator, "libnexpod-unittest");
         defer nps.deinit();
 
-        var image_list = try nps.getImages();
+        const image_list = try nps.getImageList();
         defer {
-            for (image_list.items) |e| {
+            for (image_list) |e| {
                 e.deinit();
             }
-            image_list.deinit();
+            nps.allocator.free(image_list);
         }
-        for (image_list.items) |*img| {
-            try img.makeFull();
+    }
+
+    pub fn getImage(self: LibnexpodStorage, id: []const u8) errors.ListErrors!Image {
+        return try podman.getImage(self.allocator, id);
+    }
+
+    test getImage {
+        const nps = try openLibnexpodStorage(std.testing.allocator, "libnexpod-unittest");
+        defer nps.deinit();
+
+        const image_list = try nps.getImageList();
+        defer {
+            for (image_list) |e| {
+                e.deinit();
+            }
+            nps.allocator.free(image_list);
         }
+
+        const id = image_list[0].id;
+        const img = try nps.getImage(if (image_list.len > 0) id else return);
+        defer img.deinit();
+
+        try std.testing.expectEqualStrings(id, img.id);
     }
 
     /// creates a list of all currently existing libnexpod containers with the current key in minimal form
-    pub fn getContainers(self: LibnexpodStorage) errors.ListErrors!std.ArrayList(container.Container) {
-        return try list.listContainers(self.allocator, self.key);
+    pub fn getContainerList(self: LibnexpodStorage) errors.ListErrors![]container.Container {
+        return try podman.listContainers(self.allocator, self.key);
     }
-
-    test getContainers {
+    test getContainerList {
         const nps = try openLibnexpodStorage(std.testing.allocator, "");
         defer nps.deinit();
 
-        var container_list = try nps.getContainers();
+        const container_list = try nps.getContainerList();
         defer {
-            for (container_list.items) |e| {
+            for (container_list) |e| {
                 e.deinit();
             }
-            container_list.deinit();
+            nps.allocator.free(container_list);
         }
-        for (container_list.items) |*con| {
-            try con.makeFull();
-        }
+    }
+
+    pub fn getContainer(self: LibnexpodStorage, id: []const u8) !Container {
+        return try podman.getContainer(self.allocator, self.key, id);
     }
 
     /// creates a container based on passed in information and gives you back info to the container in full form
@@ -76,16 +102,36 @@ pub const LibnexpodStorage = struct {
         home: ?[]const u8 = null,
         image: Image,
         libnexpodd_path: ?[]const u8 = null,
-    }) errors.CreationErrors!container.Container {
-        return try create.createContainer(self.allocator, .{
+    }) !container.Container {
+        var tmp_arena = std.heap.ArenaAllocator.init(self.allocator);
+        defer tmp_arena.deinit();
+        const allocator = tmp_arena.allocator();
+
+        var env = try create.getEnvMap(allocator, args.env);
+        const home = try create.getHome(&env, args.home);
+
+        const container_name = val: {
+            if (std.mem.eql(u8, "", self.key)) {
+                break :val args.name;
+            } else {
+                break :val try std.mem.concat(allocator, u8, &[_][]const u8{ self.key, "-", args.name });
+            }
+        };
+
+        const mounts = try create.getMounts(allocator, args.additional_mounts, env, home, args.libnexpodd_path);
+
+        const argv = try create.getEntrypointArgv(allocator, home);
+
+        const id = try podman.createContainer(allocator, .{
             .key = self.key,
-            .name = args.name,
+            .env = env,
+            .name = container_name,
             .image = args.image,
-            .env = args.env,
-            .additional_mounts = args.additional_mounts,
-            .home_dir = args.home,
-            .libnexpodd_path = args.libnexpodd_path,
+            .entrypoint_argv = argv,
+            .mounts = mounts,
         });
+
+        return try self.getContainer(id[0 .. id.len - 1]);
     }
 
     /// returns necessary resources of ONLY this object storage
